@@ -1,0 +1,31 @@
+name: signedge_mobile
+description: Deploy do modelo Int8 do SignEdge no dispositivo.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  camera: ^0.12.1
+  tflite_flutter: ^0.12.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/labels.txt
+    # SignEdge Int8 (student_kd --all-actors, 1/T dobrado na cabeça).
+    - assets/model_int8.tflite
+    # MediaPipe Hands, extraídos de data/models/hand_landmarker.task (zip).
+    - assets/hand_detector.tflite
+    # hand_landmark_lite (oficial, mediapipe-assets): 12 ms na CPU contra 23 do full,
+    # sem perda no SignEdge (C1 do fold 0: 79,2% com os dois).
+    - assets/hand_landmark_lite.tflite
+    - assets/handshapes.json

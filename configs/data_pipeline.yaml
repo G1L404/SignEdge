@@ -1,0 +1,67 @@
+# Caminhos, recorte e limiares da ingestão. O código lê este arquivo; não há constante solta.
+
+paths:
+  # Symlink local para LIBRAS-HC-RGBDS. O diretório absoluto não entra no Git.
+  raw_root: data/raw/libras-hc-rgbds
+  # LMDB definitivo, em disco para sobreviver entre sessões de treino. Subpasta porque
+  # data/lmdb tem o .gitkeep e a ingestão exige diretório vazio.
+  lmdb_path: data/lmdb/signedge
+  # Manifesto da ingestão: aceitos, recusados com motivo e hashes.
+  manifest_path: data/processed/manifest.json
+  # Deslocamento profundidade → cor por sessão, de `make calibrate`. A ingestão exige.
+  registration_path: data/processed/registration.json
+
+crop:
+  # A mão sai do RGB pelo MediaPipe. Entre duas mãos, vale a mais perto da câmera.
+  mp_model: data/models/hand_landmarker.task
+  mp_min_confidence: 0.3
+  # Caixa justa, a mesma do app: maior extensão dos 21 pontos vezes hand_scale,
+  # nunca abaixo de min_box_frac da altura da foto. 112/480: 112 px no Kinect.
+  # O piso aumenta a caixa do punho fechado em vez de descartar.
+  hand_scale: 1.4
+  min_box_frac: 0.233333
+  # O LMDB guarda a caixa justa vezes context_scale, a crop_size px. A margem
+  # deixa o treino sortear o recorte e trocar o fundo sem tarja de borda.
+  context_scale: 1.75
+  crop_size: 288
+
+clock:
+  # As pausas saem da trilha da média dos 21 pontos. A mão começa e termina
+  # levantada; o meio do clipe é a descida ao repouso e a volta, e fica de fora.
+  # Fração mínima de frames com mão detectada para a trilha valer.
+  min_track_coverage: 0.25
+  smooth_window: 5
+  # Acima desta fração do pico de velocidade, a mão está na descida.
+  motion_fraction: 0.4
+  # Até esta fração do pico, a mão está parada na configuração.
+  hold_fraction: 0.15
+  # De cada pausa, até frames_per_pause frames, de frame_stride em frame_stride.
+  frames_per_pause: 8
+  frame_stride: 2
+  # A média dos pontos fica parada enquanto os dedos ainda fecham. A pausa para no
+  # frame cuja forma (21 pontos centrados, em raios da mão) se afasta da forma do
+  # centro mais que isto. Em 20 clipes, mediana 0,06; dedos fechando, 0,4 a 0,8.
+  max_shape_change: 0.25
+
+registration:
+  # O .oni não registra a profundidade na cor ao reproduzir (modo não suportado,
+  # pedido ignorado sem erro). Por sessão, o (dx, dy) que encaixa a superfície
+  # próxima na silhueta dos 21 pontos, somando os frames das pausas.
+  clips_per_session: 10
+  max_shift: 48
+  shift_step: 2
+  # Espessura da superfície próxima, a partir do ponto mais perto da janela.
+  band_mm: 100
+
+ingest:
+  num_workers: 8
+  # Um subprocesso por clipe; um segfault do libOniFile custa uma nova tentativa.
+  attempts: 3
+  timeout_s: 180
+  # close: fecha streams e device e sai normalmente. exit: sai com os._exit sem
+  # fechar o OpenNI; o subprocesso só lê um clipe. Em 300 clipes com 8 leituras
+  # paralelas, close deu 6 segfaults no libOniFile e exit, nenhum.
+  openni_teardown: exit
+
+lmdb:
+  map_size: 8589934592  # 8 GiB

@@ -1,0 +1,36 @@
+# Dados brutos e LMDB local. A estrutura de pastas permanece no Git.
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# Checkpoints, logs e exportações intermediárias.
+research/experiments/**
+!research/experiments/**/
+!research/experiments/**/.gitkeep
+
+**/*.pth
+**/*.onnx
+**/events.out.tfevents*
+wandb/
+
+.venv/
+.venv-tflite/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+.ipynb_checkpoints/
+
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+
+*.tex
+*.bib
+*.bak*

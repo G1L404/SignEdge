@@ -1,0 +1,172 @@
+# Hiperparâmetros da destilação, da poda e da exportação Int8.
+
+model:
+  # Na ordem de mobile/assets/labels.txt (HC00..HC60, as 61 configurações de mão).
+  num_classes: 61
+  teacher:
+    # convnext_tiny ou resnet34 (torchvision, ImageNet).
+    arch: convnext_tiny
+    # true: RGB + profundidade relativa (informação privilegiada); false: só RGB.
+    depth: true
+  student:
+    # Só ReLU, sem squeeze-excitation: quantiza bem em Int8.
+    arch: mobilenetv4_conv_small.e2400_r224_in1k
+    # Ramo dos 21 pontos do MediaPipe, que o app já calcula para recortar a mão.
+    landmarks: true
+    landmark_hidden: 128
+    # Treino: zera o ramo dos pontos com esta chance e soma ruído (em raios da mão).
+    landmark_dropout: 0.1
+    landmark_noise: 0.02
+    dropout: 0.2
+  landmark_baseline:
+    hidden: 256
+    dropout: 0.2
+
+# Profundidade relativa à mão: (z − mediana nos 21 pontos) / range_mm, cortada em ±1;
+# sem leitura vira +1 (longe). O professor vê forma 3D, não distância à câmera.
+depth:
+  range_mm: 300
+
+run:
+  seed: 0
+  # RTX 3050 (Ampere): bf16 dispensa o GradScaler e não estoura com logits / temperatura.
+  amp_dtype: bfloat16
+  eval_every: 250
+  eval_batch_size: 128
+  ema_decay: 0.999
+  grad_clip: 1.0
+
+# Um estágio por modelo. `steps` conta lotes; uma época é uma passada por pausa (~700 por fold).
+stages:
+  landmarks:
+    batch_size: 256
+    steps: 3000
+    warmup_steps: 100
+    lr: 0.003
+    weight_decay: 0.0001
+    label_smoothing: 0.1
+  student_ce:
+    batch_size: 64
+    steps: 3000
+    warmup_steps: 200
+    lr: 0.001
+    weight_decay: 0.05
+    label_smoothing: 0.1
+  teacher:
+    batch_size: 32
+    steps: 3000
+    warmup_steps: 200
+    # Backbone pré-treinado devagar, cabeça nova 10× mais rápido.
+    lr: 0.0002
+    head_lr_mult: 10
+    weight_decay: 0.05
+    label_smoothing: 0.1
+  student_kd:
+    batch_size: 64
+    steps: 6000
+    warmup_steps: 300
+    lr: 0.001
+    weight_decay: 0.05
+    # Professor paciente e consistente (Beyer et al., 2022): mesma vista, mixup, só KL, T = 1.
+    temperature: 1.0
+    alpha_hard: 0.0
+    mixup_alpha: 0.4
+
+split:
+  # Leave-one-signer-out: cada fold treina em 4 atores e valida no quinto. Passos fixos
+  # e último checkpoint; os hiperparâmetros saem da média dos 5 folds.
+  actors: [C1, C2, C3, C4, C5]
+  # Gravado em 2012, por outra pessoa e em outro lugar: teste final, medido uma vez
+  # (--all-actors), com a receita já congelada.
+  ood: [C6]
+
+vocabularies:
+  # Códigos da base (CM = código + 1). `other` junta as demais configurações num rótulo
+  # "outra", limitado a other_cap_factor × a mediana de pausas por classe a cada época.
+  demo:
+    # CM 1, 2, 3, 5, 8, 26, 33, 38, 39, 40, 44, 51, 53, 61. Escolhido nos 5 folds (atlas,
+    # separação em landmarks e student_ce, valor didático): a acurácia nesses folds é
+    # otimista e a medida honesta é o C6. Saíram CM11 (troca com CM9 e CM25), CM15 (com a
+    # CM38) e CM25, a joia (com CM1, CM7 e CM26).
+    codes: [0, 1, 2, 4, 7, 25, 32, 37, 38, 39, 43, 50, 52, 60]
+    other: true
+    other_cap_factor: 3
+
+view:
+  input_size: 224
+  # Lado da vista = caixa da mão (21 pontos × 1,4, com piso) × view_context. O app repete
+  # a regra. Abaixo dos 1,75 do recorte gravado, sobra borda real para escala e giro.
+  view_context: 1.5
+
+augment:
+  geometry:
+    # Desvio do centro, em lados da caixa da mão: o ruído da caixa do MediaPipe no app.
+    center_jitter: 0.06
+    scale_sigma: 0.1
+    scale_range: [0.8, 1.25]
+    max_rotation_deg: 15
+    # As duas mãos: o app não espelha o frame.
+    flip_p: 0.5
+    # Os 21 pontos ficam a esta fração da borda; senão sorteia de novo (até `tries`).
+    landmark_margin: 0.02
+    tries: 8
+  background:
+    p: 0.5
+    # Superfície próxima: do 2º percentil da profundidade da vista até + band_mm.
+    band_mm: 120
+    close_px: 3
+    edge_px: 2
+    # Sem pelo menos esta fração dos 21 pontos na máscara, a amostra fica com o fundo original.
+    min_landmarks_on_mask: 0.8
+    # Fotos de interiores (jpg/png). Sem a pasta, só fundos sintéticos.
+    photo_dir: data/backgrounds
+    photo_p: 0.7
+    clutter_shapes: 4
+    skin_blobs: 2
+    # Fração da saturação mantida no fundo sintético; ambientes reais são pouco saturados.
+    saturation: [0.15, 0.6]
+  photometric:
+    white_balance: 0.15
+    brightness: 0.3
+    contrast: 0.3
+    saturation: 0.3
+    hue: 0.02
+    gamma: [0.7, 1.4]
+    blur_p: 0.25
+    blur_sigma: [0.4, 1.6]
+    motion_p: 0.15
+    motion_length: [3, 9]
+    noise_p: 0.3
+    noise_std: [0.005, 0.03]
+    downscale_p: 0.25
+    downscale_factor: [0.35, 0.8]
+  occlusion:
+    p: 0.25
+    max_boxes: 2
+    # Área de cada retângulo, em fração da vista.
+    area: [0.02, 0.08]
+    max_landmarks: 3
+    tries: 8
+compression:
+  # Fração zerada nas pointwise 1×1 e lineares do ramo dos pontos.
+  prune_amount: 0.5
+  # Receita escolhida pela média dos 5 folds do student_kd: LAMP sem fine-tuning fica a
+  # −0,5 pt do denso (McNemar p = 0,55); l1_uniform sem FT cai 32 pts e o FT curto oscila
+  # ±1–2 pts até no modelo denso. 0 = poda pós-treino, sem dados nem professor.
+  finetune_epochs: 0
+  finetune_lr: 0.0001
+  # l1_uniform (mesma fração por camada), lamp ou taylor (limiar global).
+  criterion: lamp
+  # oneshot (corta tudo antes do fine-tuning) ou gradual (curva cúbica, Zhu & Gupta).
+  schedule: oneshot
+
+paths:
+  data_config: configs/data_pipeline.yaml
+  # Um diretório por execução: config, procedência, curvas, métricas, predições e pesos.
+  runs_dir: research/experiments/runs
+  labels: mobile/assets/labels.txt
+  export_path: research/experiments/model_int8.tflite
+  # Um diretório por run exportado: TFLite float, Int8, procedência e validação.
+  exports_dir: research/experiments/exports
+  # Fora de runs_dir: a agregação LOSO não pode confundir um modelo podado com o original.
+  pruned_dir: research/experiments/pruned
