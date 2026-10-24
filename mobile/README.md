@@ -20,35 +20,28 @@ da mão, não o significado de uma palavra.
 3. Vista do modelo, a mesma `EvalView` do treino: lado = 1,5 × caixa justa
    (maior extensão × 1,4, piso de 0,2333 × lado menor da foto), centrada no
    meio da extensão dos 21 pontos, bilinear, borda replicada.
-4. `model_int8.tflite`: `rgb` (1, 224, 224, 3) float32 em [0, 1] e `landmarks`
-   (1, 21, 2) em pixels da vista. Saída: 61 logits já calibrados (1/T na cabeça).
-   Backbone e cabeça em Int8; o ramo dos pontos fica em float (`--landmarks
-   float`), porque o LiteRT 1.4 do tflite_flutter não tem SQRT em Int8.
+4. `model_int8.tflite`: o aluno destilado podado (LAMP 50%, sem ajuste fino),
+   com T = 0,48 ajustada depois da poda e dobrada na cabeça, em Int8. Entradas
+   `rgb` (1, 224, 224, 3) float32 em [0, 1] e `landmarks` (1, 21, 2) em pixels da
+   vista. Saída: 61 logits já calibrados. Backbone e cabeça em Int8; o ramo dos
+   pontos fica em float (`--landmarks float`), porque o LiteRT 1.4 do
+   tflite_flutter não tem SQRT em Int8.
 5. EMA contínua dos logits (0,35 para o frame novo, limpa quando a mão some) →
-   softmax → as variantes de cada letra somam num grupo → histerese: uma CM
-   entra com 2 frames seguidos ≥ 0,45 e sai abaixo de 0,33. O card distingue
-   "em transição" (abaixo do limiar) de "CM fora da demo" (reconhecida com
-   confiança, mas fora do soletrador). O soletrador digita depois de 0,75 s.
+   softmax nas 61 CMs → histerese: uma CM entra com 2 frames seguidos ≥ 0,45 e sai
+   abaixo de 0,33. O card mostra a CM ativa e o top-3 (`CM x (p%) · CM y · CM z`).
 
-## Vocabulário: científico (14) e soletrador (17)
+## As 61 configurações
 
-As métricas do C6 e dos relatórios usam o vocabulário científico de 14 CMs
-(`vocabularies.demo` em configs/distillation.yaml). O app expande o soletrador
-para 17 letras (+ O, V, D) com variantes (alofones) agrupadas: F = 44 + 45/46/47,
-L = 38 + 15, B = 53 + 56, C = 26 + 22, O = 21 + 20, V = 49 + 50, D = 14 + 16.
-Os grupos vieram da confusão fora do fold do LOSO (1160 pausas, sem o C6) e foram
-conferidos no atlas. Nessas pausas: fechada 96,2%; recall aberto 88,9% e falso
-aceite 5,5% no limiar 0,45 do app (86,3% e 4,4% com 0,55). São números
-otimistas (o vocabulário foi escolhido nelas); o honesto é medir no celular.
+O app classifica e mostra as 61 CMs, sem vocabulário reduzido nem soletrador.
+Nas 1.160 pausas fora do fold do LOSO (modelo podado, T = 0,48, sem o C6), o
+limiar 0,45 responde em 86,3% das pausas com 80,2% de acerto entre as
+respondidas, e a CM verdadeira está no top-3 em 92,4% das pausas (top-1 75,2%,
+top-2 88,9%). As CMs 25, 27, 32, 38, 42 e 47 têm recall abaixo de 50% e ganham o
+aviso "confusão frequente" no card. São números do Kinect; o honesto é medir no
+celular.
 
 ## Testes
 
 `flutter test` compara a geometria, as âncoras, a decodificação da palma e a
 ROI com valores gerados no Python (`torch.grid_sample` do treino e a referência
 validada contra o MediaPipe oficial, erro mediano de 1,3 px).
-
-## Revisão pendente
-
-`assets/handshapes.json` só tem letra onde a correspondência foi conferida
-(CM1 = A, CM3 = Y, CM38 = L). Os exemplos de sinais esperam revisão de pessoa
-surda, intérprete ou do dicionário do INES; depois, `"review": "revisado"`.

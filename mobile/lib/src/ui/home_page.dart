@@ -47,7 +47,6 @@ class _HomePageState extends State<HomePage> {
               builder: (context, _) => Column(
                 children: [
                   TelemetryBar(app: app),
-                  SpellerBar(app: app),
                   Expanded(child: _CameraView(app: app)),
                   ResultCard(app: app),
                 ],

@@ -49,7 +49,7 @@ O LOSO previu o C6 (75,8 ± 4,8% → 74,6–76,2%). T = 0,76 foi ajustado nas pr
 |---|---|
 | Int8 PTQ | 10,0 → **3,0 MiB**, sem perda de acurácia (top-1 igual ao FP32 em ~96% dos frames) |
 | poda 50%, L1 uniforme, sem fine-tuning | −32 pts nos 5 folds (colapsa) |
-| **poda 50%, LAMP, sem fine-tuning** | −0,5 pt (McNemar p = 0,55); 1,7 MiB comprimido (−29%) |
+| **poda 50%, LAMP, sem fine-tuning** | −0,6 pt nos 5 folds (McNemar p = 0,47); 1,73 MiB com gzip (−29%) |
 | poda e o `.tflite` | mesmo número de bytes e mesma latência: o XNNPACK Int8 não tem kernel esparso |
 
 O app usa o Int8 **denso**: a poda não ganha nada dentro do APK e muda a calibração.
@@ -61,7 +61,7 @@ O app usa o Int8 **denso**: a poda não ganha nada dentro do APK e muda a calibr
 | Redmi Note 10S (Helio G95), boa luz | ~25 fps | **22–24 fps** |
 | Redmi Note 13 (Snapdragon 685) | 20–25 fps | 11–15 fps |
 
-Com pouca luz o auto-exposure baixa a câmera para ~14 fps, que vira o teto do app. Detalhes do pipeline, do contrato do modelo e do vocabulário do soletrador em [mobile/README.md](mobile/README.md).
+Com pouca luz o auto-exposure baixa a câmera para ~14 fps, que vira o teto do app. Detalhes do pipeline, do contrato do modelo e do modo de 61 classes com top-3 em [mobile/README.md](mobile/README.md).
 
 ## Como rodar
 
@@ -89,5 +89,4 @@ make test
 
 - ~75% numa pessoa nova nas 61 classes: 5 sinalizantes não bastam, e CMs vizinhas (33/34, 42/43, 44–47) são quase o mesmo objeto em 2D.
 - Kinect de laboratório → celular: fundo, iluminação, JPEG e o MediaPipe no aparelho mudam o domínio. O número honesto da demo é o medido no celular, que ainda não tem um conjunto gravado.
-- O vocabulário da demo e as variantes do soletrador foram escolhidos olhando os mesmos folds que reportamos: são otimistas.
-- Letras do soletrador e exemplos de sinais aguardam revisão de pessoa surda, intérprete ou do dicionário do INES.
+- O app mostra as 61 CMs: com o limiar 0,45, cerca de 1 em cada 5 respostas exibidas está errada nas pausas fora do fold, e o top-3 contém a certa em 92,4% delas.

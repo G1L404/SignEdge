@@ -21,11 +21,10 @@ flutter:
   uses-material-design: true
   assets:
     - assets/labels.txt
-    # SignEdge Int8 (student_kd --all-actors, 1/T dobrado na cabeça).
+    # SignEdge Int8: student_kd --all-actors, poda LAMP 50%, T = 0,48 dobrado na cabeça.
     - assets/model_int8.tflite
     # MediaPipe Hands, extraídos de data/models/hand_landmarker.task (zip).
     - assets/hand_detector.tflite
     # hand_landmark_lite (oficial, mediapipe-assets): 12 ms na CPU contra 23 do full,
     # sem perda no SignEdge (C1 do fold 0: 79,2% com os dois).
     - assets/hand_landmark_lite.tflite
-    - assets/handshapes.json

@@ -1,5 +1,5 @@
-/// Estado do app: câmera, os dois isolates de inferência, telemetria, decisão e
-/// soletrador.
+/// Estado do app: câmera, os dois isolates de inferência, telemetria e decisão
+/// sobre as 61 configurações de mão.
 ///
 /// Pipeline em dois estágios: a mão (GPU) recebe um frame novo assim que devolve
 /// o anterior; o SignEdge (CPU) classifica o recorte mais recente. Se ele ainda
@@ -14,19 +14,12 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'logic/decision.dart';
-import 'logic/handshapes.dart';
 import 'vision/inference_isolate.dart';
 import 'vision/frame.dart';
 import 'vision/pipeline.dart';
 
 class AppController extends ChangeNotifier {
-  AppController._(
-    this.catalog,
-    this._hand,
-    this._classifier,
-    this._cameras,
-    this.modelBytes,
-  );
+  AppController._(this._hand, this._classifier, this._cameras, this.modelBytes);
 
   static Future<AppController> create() async {
     Future<Uint8List> bytes(String asset) async =>
@@ -36,16 +29,12 @@ class AppController extends ChangeNotifier {
       landmarks: await bytes('assets/hand_landmark_lite.tflite'),
       classifier: await bytes('assets/model_int8.tflite'),
     );
-    final catalog = HandshapeCatalog.parse(
-      await rootBundle.loadString('assets/handshapes.json'),
-    );
     final hand = await Worker.spawn(handWorker, (
       models.palm,
       models.landmarks,
     ));
     final classifier = await Worker.spawn(classifierWorker, models.classifier);
     final controller = AppController._(
-      catalog,
       hand,
       classifier,
       await availableCameras(),
@@ -54,18 +43,6 @@ class AppController extends ChangeNotifier {
     await controller._open(CameraLensDirection.back);
     return controller;
   }
-
-  final HandshapeCatalog catalog;
-  late final Map<int, List<int>> _variants = catalog.variantCodes;
-
-  /// As 17 canônicas do soletrador (assets/handshapes.json).
-  late final Set<int> _vocabulary = catalog.canonicalCodes;
-
-  /// Códigos que vão para o soletrador: as 14 da demo e as variantes delas.
-  late final Set<int> spellableCodes = {
-    ..._vocabulary,
-    for (final v in _variants.values) ...v,
-  };
 
   /// Tamanho do model_int8.tflite embarcado, para o selo da telemetria.
   final int modelBytes;
@@ -78,14 +55,13 @@ class AppController extends ChangeNotifier {
   /// sair, cair abaixo de limiar − 0,12. Assim o card não pisca com a mão respirando.
   final LogitEma smoother = LogitEma(alpha: 0.35);
   final Stabilizer stabilizer = Stabilizer(enterFrames: 2, release: 0.12);
-  final Speller speller = Speller();
   final Stopwatch _clock = Stopwatch()..start();
 
   /// Limiar de confiança (probabilidade calibrada) para aceitar uma CM.
   ///
-  /// 0,45: no celular, 0,55 barrava predições legítimas de ~50%. Nas pausas fora
-  /// do fold do LOSO (17 letras com variantes) dá recall 88,9% e falso aceite 5,5%
-  /// (0,55 daria 86,3% e 4,4%; ~3,5% só com 0,65). O slider ajusta ao vivo.
+  /// 0,45: nas 1.160 pausas fora do fold do modelo podado (T = 0,48), o app
+  /// responde em 86,3% das pausas com 80,2% de acerto entre as respondidas (0,30:
+  /// 94,7% e 77,5%; 0,70: 70,1% e 86,5%). O slider ajusta ao vivo.
   double threshold = 0.45;
 
   // Último frame processado, em coordenadas do frame em pé.
@@ -93,7 +69,6 @@ class AppController extends ChangeNotifier {
   Float32List? landmarks;
   Float32List? view;
   Decision decision = Decision.neutral;
-  double spellProgress = 0;
 
   // Telemetria.
   double fps = 0, handMs = 0, classifierMs = 0, classifierCropMs = 0;
@@ -239,8 +214,6 @@ class AppController extends ChangeNotifier {
       // Sempre: também descarta a classificação que ainda está a caminho.
       _forgetHand();
       _decide();
-      speller.update(decision.accepted, now, catalog.token);
-      spellProgress = speller.progress(now);
       return;
     }
     final request = ClassifierRequest(
@@ -289,10 +262,7 @@ class AppController extends ChangeNotifier {
           classifierMs = 0.8 * classifierMs + 0.2 * result.ms;
           if (result.generation != _generation) return;
           smoother.add(result.logits);
-          final now = _clock.elapsed;
           _decide();
-          speller.update(decision.accepted, now, catalog.token);
-          spellProgress = speller.progress(now);
         })
         .catchError((Object e) {
           error = '$e';
@@ -314,22 +284,8 @@ class AppController extends ChangeNotifier {
       return;
     }
     final probs = softmax(logits);
-    final raw = decide(
-      probs,
-      threshold,
-      variants: _variants,
-      vocabulary: _vocabulary,
-    );
-    decision = stabilizer.step(
-      raw,
-      probs,
-      threshold,
-      variants: _variants,
-      vocabulary: _vocabulary,
-    );
+    decision = stabilizer.step(decide(probs, threshold), probs, threshold);
   }
-
-  void notifySpeller() => notifyListeners();
 
   bool _uiScheduled = false;
 

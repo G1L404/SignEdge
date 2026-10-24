@@ -73,90 +73,8 @@ class TelemetryBar extends StatelessWidget {
   }
 }
 
-/// Modo soletrador: a configuração parada por 0,75 s vira caractere.
-class SpellerBar extends StatelessWidget {
-  const SpellerBar({super.key, required this.app});
-
-  final AppController app;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final text = app.speller.text;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 8, 6),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    text.isEmpty
-                        ? 'Segure uma configuração para digitar…'
-                        : text,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 18,
-                      letterSpacing: 1.5,
-                      color: text.isEmpty
-                          ? scheme.onSurfaceVariant
-                          : scheme.onSurface,
-                    ),
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Espaço',
-                onPressed: () {
-                  app.speller.space();
-                  app.notifySpeller();
-                },
-                icon: const Icon(Icons.space_bar),
-              ),
-              IconButton(
-                tooltip: 'Apagar',
-                onPressed: () {
-                  app.speller.backspace();
-                  app.notifySpeller();
-                },
-                icon: const Icon(Icons.backspace_outlined),
-              ),
-              IconButton(
-                tooltip: 'Limpar',
-                onPressed: () {
-                  app.speller.clear();
-                  app.notifySpeller();
-                },
-                icon: const Icon(Icons.clear_all),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          LinearProgressIndicator(
-            value: app.spellProgress,
-            minHeight: 4,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Card principal. Quatro estados, para a tela nunca contradizer as barras:
-/// sem mão; em transição (a mais provável abaixo do limiar); CM fora da demo
-/// (reconhecida com confiança, mas fora do soletrador); e a CM da demo aceita,
-/// com a variante que a rede viu quando não é a canônica.
+/// Card principal. Três estados, para a tela nunca contradizer as barras: sem
+/// mão; em transição (nenhuma CM ativa); e a CM ativa, com o top-3 das 61.
 class ResultCard extends StatelessWidget {
   const ResultCard({super.key, required this.app});
 
@@ -166,15 +84,10 @@ class ResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final decision = app.decision;
-    final accepted = decision.accepted;
-    final shape = accepted == null ? null : app.catalog[accepted];
-    final recognized = decision.recognized;
-    // A descrição é da CM que a rede viu (a variante tem a sua, se houver); a
-    // letra é a da canônica, que é o que o soletrador digita.
-    final described =
-        (recognized == null ? null : app.catalog[recognized]) ?? shape;
+    final code = decision.code;
     final percent = '${(decision.probability * 100).round()}%';
     final limit = '${(app.threshold * 100).round()}%';
+    final accepted = decision.state == DecisionState.accepted;
 
     final (
       String title,
@@ -185,24 +98,10 @@ class ResultCard extends StatelessWidget {
       DecisionState.belowThreshold => (
         'Em transição',
         scheme.onSurfaceVariant,
-        'Nenhuma CM passa do limiar ($percent < $limit)',
+        'Nenhuma CM ativa ($percent; limiar $limit)',
       ),
-      DecisionState.outsideDemo => (
-        'CM ${recognized! + 1}',
-        scheme.tertiary,
-        'Configuração reconhecida ($percent), fora do vocabulário do soletrador',
-      ),
-      DecisionState.accepted => (
-        'CM ${accepted! + 1}',
-        scheme.primary,
-        recognized != null && recognized != accepted
-            ? 'Reconhecida como CM ${recognized + 1}, variante desta ($percent)'
-            : null,
-      ),
+      DecisionState.accepted => ('CM ${code! + 1}', scheme.primary, percent),
     };
-    final large =
-        decision.state == DecisionState.accepted ||
-        decision.state == DecisionState.outsideDemo;
 
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -218,25 +117,15 @@ class ResultCard extends StatelessWidget {
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: large ? 40 : 24,
+                    fontSize: accepted ? 40 : 24,
                     fontWeight: FontWeight.w800,
                     color: color,
                   ),
                 ),
                 const SizedBox(width: 12),
-                if (shape?.letter != null)
+                if (accepted && frequentConfusion.contains(code))
                   Chip(
-                    label: Text(
-                      shape!.alt == null
-                          ? shape.letter!
-                          : '${shape.letter} · ${shape.alt}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                if (decision.state == DecisionState.outsideDemo)
-                  Chip(
-                    label: const Text('fora da demo'),
+                    label: const Text('confusão frequente'),
                     visualDensity: VisualDensity.compact,
                     side: BorderSide(color: scheme.tertiary),
                   ),
@@ -247,54 +136,28 @@ class ResultCard extends StatelessWidget {
                 subtitle,
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
-            // Confirmação da letra no próprio card: enche em 0,75 s e digita.
-            if (decision.state == DecisionState.accepted &&
-                shape?.letter != null &&
-                app.spellProgress > 0) ...[
+            if (decision.top.isNotEmpty) ...[
               const SizedBox(height: 6),
-              Row(
-                children: [
-                  Text(
-                    'Digitando ${shape!.letter}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: LinearProgressIndicator(
-                      value: app.spellProgress,
-                      minHeight: 8,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-            ],
-            if (shape != null) ...[
-              Text(described!.shape, style: TextStyle(color: scheme.onSurface)),
-              const SizedBox(height: 4),
               Text(
-                shape.examples.isNotEmpty && app.catalog.reviewed
-                    ? 'Sinais com esta CM: ${shape.examples.join(' · ')}'
-                    : 'Exemplos de sinais: aguardando revisão (INES / intérprete)',
-                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                decision.top
+                    .map(
+                      (r) => 'CM ${r.cm} (${(r.probability * 100).round()}%)',
+                    )
+                    .join(' · '),
+                style: TextStyle(fontSize: 13, color: scheme.onSurface),
               ),
             ],
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             for (final r in decision.top)
               _ProbabilityBar(
                 ranked: r,
                 threshold: app.threshold,
-                spellable: app.spellableCodes.contains(r.code),
+                active: accepted && r.code == code,
               ),
             Row(
               children: [
                 Text(
-                  'Limiar ${(app.threshold * 100).round()}%',
+                  'Limiar $limit',
                   style: TextStyle(
                     fontSize: 12,
                     color: scheme.onSurfaceVariant,
@@ -306,7 +169,7 @@ class ResultCard extends StatelessWidget {
                     min: 0.3,
                     max: 0.9,
                     divisions: 12,
-                    label: '${(app.threshold * 100).round()}%',
+                    label: limit,
                     onChanged: app.setThreshold,
                   ),
                 ),
@@ -323,14 +186,14 @@ class _ProbabilityBar extends StatelessWidget {
   const _ProbabilityBar({
     required this.ranked,
     required this.threshold,
-    required this.spellable,
+    required this.active,
   });
 
   final Ranked ranked;
   final double threshold;
 
-  /// CM da demo ou variante dela (vai para o soletrador).
-  final bool spellable;
+  /// A CM ativa no card.
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
@@ -346,7 +209,7 @@ class _ProbabilityBar extends StatelessWidget {
               'CM ${ranked.cm}',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: spellable ? scheme.onSurface : scheme.onSurfaceVariant,
+                color: active ? scheme.onSurface : scheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -355,10 +218,9 @@ class _ProbabilityBar extends StatelessWidget {
               value: ranked.probability,
               minHeight: 10,
               borderRadius: BorderRadius.circular(5),
-              // Acima do limiar: verde se vai para o soletrador, outra cor se não.
-              color: strong
-                  ? (spellable ? scheme.primary : scheme.tertiary)
-                  : scheme.outline,
+              color: active
+                  ? scheme.primary
+                  : (strong ? scheme.tertiary : scheme.outline),
               backgroundColor: scheme.surfaceContainerHighest,
             ),
           ),
