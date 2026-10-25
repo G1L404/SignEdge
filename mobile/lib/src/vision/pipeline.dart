@@ -249,8 +249,9 @@ class HandStage {
   /// Diagnóstico da palma no logcat (via perfil): estatísticas da entrada e maior
   /// score das 2016 âncoras. [compareReference] também gera o recorte pelo caminho
   /// exato e mede a diferença (custa ~10 ms por chamada; no Redmi Note 10S deu
-  /// no máximo 0,055, só da cor pelo vizinho mais próximo).
-  static const bool palmDiagnostics = true;
+  /// no máximo 0,055, só da cor pelo vizinho mais próximo). Desligado fora da
+  /// depuração: percorre os 110.592 valores da entrada a cada frame de palma.
+  static const bool palmDiagnostics = false;
   static const bool compareReference = false;
   final _palmReference = Float32List(palmInput * palmInput * 3);
 
@@ -291,6 +292,8 @@ class HandStage {
       final opened3 = _open(_palmBytes, _order.sublist(1));
       _palm = opened3.$1;
       _palmBackend = opened3.$2;
+      // A entrada foi copiada para o interpretador fechado.
+      _palm.getInputTensor(0).setTo(_palmIn.buffer.asUint8List());
       invokeNamed(_palm, 'palma');
     }
     _palm.getOutputTensor(_palmRaw).copyTo(_palmBoxes.buffer.asUint8List());
@@ -325,6 +328,7 @@ class HandStage {
       ]);
       _landmarks = opened4.$1;
       _landmarksBackend = opened4.$2;
+      _landmarks.getInputTensor(0).setTo(_lmIn.buffer.asUint8List());
       invokeNamed(_landmarks, 'pontos');
     }
     _landmarks.getOutputTensor(_lmPoints).copyTo(_lmOut.buffer.asUint8List());

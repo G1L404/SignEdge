@@ -115,6 +115,13 @@ void main() {
       expect(result.roi.rotation, closeTo(expected[3].toDouble(), 1e-5));
     });
 
+    test('palma com caixa degenerada não vira ROI NaN', () {
+      // Score alto numa âncora com largura e altura 0.
+      final scores = Float32List(2016)..fillRange(0, 2016, -100);
+      scores[100] = 10;
+      expect(decodePalm(Float32List(2016 * 18), scores, 480, 640), isNull);
+    });
+
     test('ROI de rastreamento a partir dos pontos', () {
       final roi = roiFromLandmarks(_points(gold['landmarks'] as List));
       final expected = (gold['roi'] as List).cast<num>();

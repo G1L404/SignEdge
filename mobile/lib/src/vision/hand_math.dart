@@ -149,6 +149,9 @@ double _rotationTo(double x0, double y0, double x1, double y1) =>
     }
     total += s;
   }
+  // Caixa degenerada (largura ou altura 0): nem a melhor entra no NMS, e a média
+  // viraria NaN, que derruba o recorte do frame.
+  if (total <= 0) return null;
   final b = [for (final value in acc) value / total];
 
   // Do quadrado de 192 normalizado para pixels do frame.
