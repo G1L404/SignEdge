@@ -48,9 +48,10 @@ O". É uma leitura aproximada: a CM é só a forma da mão, e as letras que depe
 orientação ou movimento não entram. Aguarda revisão de pessoa surda, intérprete ou
 do dicionário do INES.
 
-Em segundo plano o app libera a câmera e os três modelos (interpretadores,
-delegates e isolates) e os recarrega na volta: parado com tudo carregado, ele
-ocupava ~260 MB e o LMK do MIUI o encerrava.
+Em segundo plano o app libera a câmera e a reabre na volta (~0,9 s). Os modelos
+ficam carregados: liberá-los também tirava só ~17 MB do Native Heap e a volta
+subia para ~12 s, com os delegates da GPU recompilando (Redmi Note 13 Pro 5G,
+debug). Parado, o app ainda pode ser encerrado pelo LMK do MIUI.
 
 ## Testes
 
