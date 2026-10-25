@@ -28,3 +28,5 @@ flutter:
     # hand_landmark_lite (oficial, mediapipe-assets): 12 ms na CPU contra 23 do full,
     # sem perda no SignEdge (C1 do fold 0: 79,2% com os dois).
     - assets/hand_landmark_lite.tflite
+    # Leitura aproximada (letra ou número) das CMs no card; revisão pendente.
+    - assets/handshapes.json

@@ -24,34 +24,45 @@ enum Backend { gpu, xnnpack, cpu }
 /// Cada interpretador só é aceito depois de um invoke de aquecimento: se o
 /// backend falha no aparelho, cai para o próximo. O construtor do Interpreter
 /// já aloca os tensores; não alocar de novo.
-(Interpreter, Backend) openVerified(
+///
+/// O terceiro campo libera tudo o que é nativo: `Interpreter.close()` sozinho
+/// não apaga o delegate (os buffers da GPU) nem as opções.
+(Interpreter, Backend, void Function() release) openVerified(
   Uint8List bytes,
   List<Backend> order, {
   int threads = 2,
 }) {
   Object? last;
   for (final backend in order) {
+    InterpreterOptions? options;
+    Delegate? delegate;
     Interpreter? interpreter;
+    // O interpretador antes do delegate que ele usa.
+    void release() {
+      interpreter?.close();
+      delegate?.delete();
+      options?.delete();
+    }
+
     try {
-      final options = InterpreterOptions();
+      options = InterpreterOptions();
       switch (backend) {
         case Backend.gpu:
-          options.addDelegate(
-            GpuDelegateV2(
-              options: GpuDelegateOptionsV2(isPrecisionLossAllowed: true),
-            ),
+          delegate = GpuDelegateV2(
+            options: GpuDelegateOptionsV2(isPrecisionLossAllowed: true),
           );
         case Backend.xnnpack:
           // Sem opções: as padrão do XNNPACK, com os kernels Int8 ligados.
-          options.addDelegate(XNNPackDelegate());
+          delegate = XNNPackDelegate();
         case Backend.cpu:
           options.threads = threads;
       }
+      if (delegate != null) options.addDelegate(delegate);
       interpreter = Interpreter.fromBuffer(bytes, options: options);
       interpreter.invoke();
-      return (interpreter, backend);
+      return (interpreter, backend, release);
     } catch (error) {
-      interpreter?.close();
+      release();
       last = error;
     }
   }
@@ -131,9 +142,11 @@ class HandStage {
     final opened1 = _open(palm, _order);
     _palm = opened1.$1;
     _palmBackend = opened1.$2;
+    _palmRelease = opened1.$3;
     final opened2 = _open(landmarks, landmarksOrder);
     _landmarks = opened2.$1;
     _landmarksBackend = opened2.$2;
+    _landmarksRelease = opened2.$3;
     _palmRaw = _outputIndex(_palm, 'Identity');
     _palmScore = _outputIndex(_palm, 'Identity_1');
     _lmPoints = _outputIndex(_landmarks, 'Identity');
@@ -147,8 +160,10 @@ class HandStage {
   /// o SignEdge, que roda em paralelo no XNNPACK.
   static const landmarksOrder = [Backend.gpu, Backend.xnnpack, Backend.cpu];
 
-  static (Interpreter, Backend) _open(Uint8List bytes, List<Backend> order) =>
-      openVerified(bytes, order);
+  static (Interpreter, Backend, void Function()) _open(
+    Uint8List bytes,
+    List<Backend> order,
+  ) => openVerified(bytes, order);
 
   static int _outputIndex(Interpreter interpreter, String name) {
     final index = interpreter.getOutputTensors().indexWhere(
@@ -161,6 +176,14 @@ class HandStage {
   final Uint8List _palmBytes, _landmarksBytes;
   late Interpreter _palm, _landmarks;
   late Backend _palmBackend, _landmarksBackend;
+  late void Function() _palmRelease, _landmarksRelease;
+
+  /// Libera os dois modelos (memória nativa e da GPU); o estágio não roda mais.
+  void close() {
+    _palmRelease();
+    _landmarksRelease();
+  }
+
   late final int _palmRaw, _palmScore, _lmPoints, _lmPresence;
 
   String get handBackends =>
@@ -288,10 +311,11 @@ class HandStage {
     }
     _palm.getInputTensor(0).setTo(_palmIn.buffer.asUint8List());
     if (!_invokeOnGpu(_palm, _palmBackend)) {
-      _palm.close();
+      _palmRelease();
       final opened3 = _open(_palmBytes, _order.sublist(1));
       _palm = opened3.$1;
       _palmBackend = opened3.$2;
+      _palmRelease = opened3.$3;
       // A entrada foi copiada para o interpretador fechado.
       _palm.getInputTensor(0).setTo(_palmIn.buffer.asUint8List());
       invokeNamed(_palm, 'palma');
@@ -321,13 +345,14 @@ class HandStage {
     _clock.lap('pontos.recorte');
     _landmarks.getInputTensor(0).setTo(_lmIn.buffer.asUint8List());
     if (!_invokeOnGpu(_landmarks, _landmarksBackend)) {
-      _landmarks.close();
+      _landmarksRelease();
       final opened4 = _open(_landmarksBytes, [
         for (final b in landmarksOrder)
           if (b != _landmarksBackend) b,
       ]);
       _landmarks = opened4.$1;
       _landmarksBackend = opened4.$2;
+      _landmarksRelease = opened4.$3;
       _landmarks.getInputTensor(0).setTo(_lmIn.buffer.asUint8List());
       invokeNamed(_landmarks, 'pontos');
     }
@@ -403,6 +428,7 @@ class ClassifierStage {
     ]);
     _interpreter = opened5.$1;
     backend = opened5.$2;
+    close = opened5.$3;
     final inputs = _interpreter.getInputTensors();
     _landmarks = inputs.indexWhere((t) => t.name.contains('landmarks'));
     _rgb = inputs.indexWhere((t) => t.name.contains('rgb'));
@@ -413,6 +439,9 @@ class ClassifierStage {
 
   late final Interpreter _interpreter;
   late final Backend backend;
+
+  /// Libera o modelo (memória nativa); o estágio não roda mais.
+  late final void Function() close;
   late final int _landmarks, _rgb;
   final _logits = Float32List(61);
   final _crop = Float32List(CropRule.inputSize * CropRule.inputSize * 3);

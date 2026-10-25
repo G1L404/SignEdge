@@ -95,6 +95,15 @@ class ResultCard extends StatelessWidget {
     final percent = '${(decision.probability * 100).round()}%';
     final limit = '${(app.threshold * 100).round()}%';
     final accepted = decision.state == DecisionState.accepted;
+    // Leitura da CM ativa primeiro, e a das outras do top-3 que dividem a
+    // confiança com ela ("C ou O").
+    final readings = accepted
+        ? app.catalog.readingsAmong([
+            Ranked(code!, decision.probability),
+            ...decision.top.where((r) => r.code != code),
+          ])
+        : const <String>[];
+    final shape = accepted ? app.catalog.shapeOf(code! + 1) : null;
 
     final (
       String title,
@@ -130,11 +139,30 @@ class ResultCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
+                if (readings.isNotEmpty)
+                  Flexible(
+                    child: Chip(
+                      label: Text(
+                        'lembra ${readings.join(' ou ')}',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
                 if (accepted && frequentConfusion.contains(code))
-                  Chip(
-                    label: const Text('confusão frequente'),
-                    visualDensity: VisualDensity.compact,
-                    side: BorderSide(color: scheme.tertiary),
+                  Flexible(
+                    child: Chip(
+                      label: const Text(
+                        'confusão frequente',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      side: BorderSide(color: scheme.tertiary),
+                    ),
                   ),
               ],
             ),
@@ -142,6 +170,14 @@ class ResultCard extends StatelessWidget {
               Text(
                 subtitle,
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+            if (shape != null)
+              Text(shape, style: TextStyle(color: scheme.onSurface)),
+            if (readings.isNotEmpty && !app.catalog.reviewed)
+              Text(
+                'Forma da mão, não a letra: leitura aproximada, aguardando '
+                'revisão (INES / intérprete)',
+                style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
               ),
             if (decision.top.isNotEmpty) ...[
               const SizedBox(height: 6),

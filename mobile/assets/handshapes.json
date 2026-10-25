@@ -1,0 +1,156 @@
+{
+  "_leia": "Leitura aproximada das configurações de mão (CM) que o card mostra junto com a CM, numeração de Pimenta & Quadros (código do modelo = CM − 1). Uma CM é a forma da mão, não a letra: várias letras da datilologia dependem também de orientação ou movimento, e só as estáticas aparecem aqui. 'letter' e 'alt' (leitura alternativa, ex.: L ou 2) seguem 'letters_source'. 'variants' são CMs vizinhas que a rede confunde com esta (confusão fora do fold do LOSO, conferida no atlas) e herdam a sua leitura: F = 44 + 45/46/47, L = 38 + 15, B = 53 + 56, C = 26 + 22, O = 21 + 20, V = 49 + 50, D = 14 + 16. Entradas que são variantes (46, 47) só dão a descrição própria. Aguarda revisão de pessoa surda, intérprete ou do dicionário do INES; depois, 'review': 'revisado'.",
+  "review": "pendente",
+  "letters_source": "Porfirio et al. (SMC 2013), Fig. 1 e Tabela V + Atlas UFPR",
+  "shapes": [
+    {
+      "cm": 1,
+      "shape": "Mão fechada, polegar encostado na lateral do indicador",
+      "letter": "A",
+      "alt": null,
+      "variants": []
+    },
+    {
+      "cm": 2,
+      "shape": "Mão fechada, polegar aberto para o lado",
+      "letter": "1",
+      "alt": null,
+      "variants": []
+    },
+    {
+      "cm": 3,
+      "shape": "Polegar e mínimo estendidos, demais dedos fechados",
+      "letter": "Y",
+      "alt": null,
+      "variants": []
+    },
+    {
+      "cm": 5,
+      "shape": "Um dedo estendido para cima, demais fechados",
+      "letter": "I",
+      "alt": null,
+      "variants": []
+    },
+    {
+      "cm": 8,
+      "shape": "Pontas dos dedos agrupadas, curvadas sobre o polegar",
+      "letter": "S",
+      "alt": null,
+      "variants": []
+    },
+    {
+      "cm": 14,
+      "shape": "Indicador estendido para cima, demais dedos em anel com o polegar",
+      "letter": "D",
+      "alt": null,
+      "variants": [
+        16
+      ]
+    },
+    {
+      "cm": 21,
+      "shape": "Dedos curvados tocando a ponta do polegar em círculo (Letra O)",
+      "letter": "O",
+      "alt": "0",
+      "variants": [
+        20
+      ]
+    },
+    {
+      "cm": 26,
+      "shape": "Dedos juntos e curvados, em pinça larga com o polegar",
+      "letter": "C",
+      "alt": null,
+      "variants": [
+        22
+      ]
+    },
+    {
+      "cm": 33,
+      "shape": "Indicador e médio estendidos e unidos",
+      "letter": "U",
+      "alt": null,
+      "variants": []
+    },
+    {
+      "cm": 38,
+      "shape": "Polegar e indicador estendidos em ângulo reto",
+      "letter": "L",
+      "alt": "2",
+      "variants": [
+        15
+      ]
+    },
+    {
+      "cm": 39,
+      "shape": "Indicador e mínimo estendidos (chifres)",
+      "letter": null,
+      "alt": null,
+      "variants": []
+    },
+    {
+      "cm": 40,
+      "shape": "Polegar, indicador e mínimo estendidos",
+      "letter": null,
+      "alt": null,
+      "variants": []
+    },
+    {
+      "cm": 44,
+      "shape": "Polegar e indicador em anel, dedos estendidos juntos (F tradicional)",
+      "letter": "F",
+      "alt": null,
+      "variants": [
+        45,
+        46,
+        47
+      ]
+    },
+    {
+      "cm": 46,
+      "shape": "Variante de pinça com dedos abertos",
+      "letter": "F",
+      "alt": "OK",
+      "variants": []
+    },
+    {
+      "cm": 47,
+      "shape": "Polegar e indicador em anel, três dedos abertos em leque (Gesto OK)",
+      "letter": "F",
+      "alt": "OK",
+      "variants": []
+    },
+    {
+      "cm": 49,
+      "shape": "Indicador e médio estendidos e separados em V",
+      "letter": "V",
+      "alt": null,
+      "variants": [
+        50
+      ]
+    },
+    {
+      "cm": 51,
+      "shape": "Indicador, médio e anelar estendidos e separados",
+      "letter": "W",
+      "alt": "3",
+      "variants": []
+    },
+    {
+      "cm": 53,
+      "shape": "Mão plana, dedos estendidos e juntos",
+      "letter": "B",
+      "alt": "4",
+      "variants": [
+        56
+      ]
+    },
+    {
+      "cm": 61,
+      "shape": "Mão aberta, cinco dedos estendidos e separados",
+      "letter": "5",
+      "alt": null,
+      "variants": []
+    }
+  ]
+}

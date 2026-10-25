@@ -40,6 +40,18 @@ top-2 88,9%). As CMs 25, 27, 32, 38, 42 e 47 têm recall abaixo de 50% e ganham 
 aviso "confusão frequente" no card. São números do Kinect; o honesto é medir no
 celular.
 
+Para 17 CMs o card também diz a letra ou o número que a forma lembra
+(`assets/handshapes.json`, de Porfirio et al. 2013 e do atlas UFPR), e as vizinhas
+que a rede confunde herdam a leitura do grupo (CM 22 lembra o C da 26). Quando o
+top-3 divide a confiança entre letras diferentes (≥ 15% cada), aparece "lembra C ou
+O". É uma leitura aproximada: a CM é só a forma da mão, e as letras que dependem de
+orientação ou movimento não entram. Aguarda revisão de pessoa surda, intérprete ou
+do dicionário do INES.
+
+Em segundo plano o app libera a câmera e os três modelos (interpretadores,
+delegates e isolates) e os recarrega na volta: parado com tudo carregado, ele
+ocupava ~260 MB e o LMK do MIUI o encerrava.
+
 ## Testes
 
 `flutter test` compara a geometria, as âncoras, a decodificação da palma e a

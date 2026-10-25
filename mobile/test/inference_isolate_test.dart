@@ -16,6 +16,13 @@ void main() {
     worker.dispose();
   });
 
+  test('close libera e encerra, mesmo com o isolate já morto', () async {
+    final alive = await Worker.spawn(_echo, 0);
+    await alive.close();
+    final dead = await Worker.spawn(_dies, 0);
+    await dead.close();
+  });
+
   test('isolate que morre falha o pedido pendente e os seguintes', () async {
     final worker = await Worker.spawn(_dies, 0);
     await expectLater(worker.call('frame'), throwsStateError);

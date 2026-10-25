@@ -15,14 +15,43 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'logic/decision.dart';
+import 'logic/handshapes.dart';
 import 'vision/inference_isolate.dart';
 import 'vision/frame.dart';
 import 'vision/pipeline.dart';
 
 class AppController extends ChangeNotifier with WidgetsBindingObserver {
-  AppController._(this._hand, this._classifier, this._cameras, this.modelBytes);
+  AppController._(
+    this.catalog,
+    this._hand,
+    this._classifier,
+    this._cameras,
+    this.modelBytes,
+  );
 
   static Future<AppController> create() async {
+    final catalog = HandshapeCatalog.parse(
+      await rootBundle.loadString('assets/handshapes.json'),
+    );
+    final (hand, classifier, size) = await _spawnWorkers();
+    final controller = AppController._(
+      catalog,
+      hand,
+      classifier,
+      await availableCameras(),
+      size,
+    );
+    await controller._open(CameraLensDirection.back);
+    // Só depois da primeira abertura: o pedido de permissão da câmera também
+    // tira o app do primeiro plano.
+    WidgetsBinding.instance.addObserver(controller);
+    return controller;
+  }
+
+  /// Os dois isolates com os modelos carregados, e o tamanho do classificador.
+  /// Os bytes dos modelos não ficam guardados: a volta do segundo plano relê os
+  /// assets.
+  static Future<(Worker, Worker, int)> _spawnWorkers() async {
     Future<Uint8List> bytes(String asset) async =>
         (await rootBundle.load(asset)).buffer.asUint8List();
     final models = ModelBytes(
@@ -34,23 +63,26 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       models.palm,
       models.landmarks,
     ));
-    final classifier = await Worker.spawn(classifierWorker, models.classifier);
-    final controller = AppController._(
-      hand,
-      classifier,
-      await availableCameras(),
-      models.classifier.lengthInBytes,
-    );
-    await controller._open(CameraLensDirection.back);
-    // Só depois da primeira abertura: o pedido de permissão da câmera também
-    // tira o app do primeiro plano.
-    WidgetsBinding.instance.addObserver(controller);
-    return controller;
+    try {
+      final classifier = await Worker.spawn(
+        classifierWorker,
+        models.classifier,
+      );
+      return (hand, classifier, models.classifier.lengthInBytes);
+    } catch (_) {
+      await hand.close();
+      rethrow;
+    }
   }
+
+  /// Leitura aproximada (letra ou número) das CMs, para o card.
+  final HandshapeCatalog catalog;
 
   /// Tamanho do model_int8.tflite embarcado, para o selo da telemetria.
   final int modelBytes;
-  final Worker _hand, _classifier;
+
+  /// Null em segundo plano: os modelos são liberados junto com a câmera.
+  Worker? _hand, _classifier;
   final List<CameraDescription> _cameras;
   CameraController? camera;
 
@@ -112,24 +144,42 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   });
 
-  /// Em segundo plano a câmera é liberada (o Android a toma de volta, e o app
-  /// parado com ela aberta é dos primeiros que o LMK mata); na volta, reabre.
+  /// Em segundo plano a câmera e os modelos são liberados; na volta, recarrega e
+  /// reabre a mesma lente. Só a câmera não bastava: parado, o app seguia com
+  /// ~260 MB e o LMK do MIUI o matava (`LOW_MEMORY` no exit-info).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
-        unawaited(_serial(_close));
+        unawaited(_serial(_suspend));
       case AppLifecycleState.resumed:
-        unawaited(
-          _serial(() async {
-            if (camera == null) await _open(_lens);
-          }),
-        );
+        unawaited(_serial(_resume));
       case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
         break;
     }
+  }
+
+  Future<void> _suspend() async {
+    await _close();
+    // Sem frames novos: o recorte que esperava e a mão rastreada não valem mais.
+    _forgetHand();
+    final hand = _hand, classifier = _classifier;
+    _hand = _classifier = null;
+    // Os pedidos em voo respondem antes do pedido de liberar (fila única).
+    await hand?.close();
+    await classifier?.close();
+    _handBusy = _classifierBusy = false;
+  }
+
+  Future<void> _resume() async {
+    if (_hand == null) {
+      final (hand, classifier, _) = await _spawnWorkers();
+      _hand = hand;
+      _classifier = classifier;
+    }
+    if (camera == null) await _open(_lens);
   }
 
   Future<void> _close() async {
@@ -170,7 +220,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       }
     }
     camera = controller;
-    unawaited(_hand.call(const ResetTracking()));
+    final hand = _hand;
+    if (hand != null) unawaited(hand.call(const ResetTracking()));
     _forgetHand();
     await controller.startImageStream(_onImage);
     notifyListeners();
@@ -202,9 +253,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   void _onImage(CameraImage image) {
     _profile.delivered++;
-    final current = camera;
+    final current = camera, hand = _hand;
     // Durante a troca de câmera ainda podem chegar frames da anterior.
-    if (_handBusy || current == null || image.planes.length < 3) return;
+    if (_handBusy ||
+        current == null ||
+        hand == null ||
+        image.planes.length < 3) {
+      return;
+    }
     _handBusy = true;
     // Aparelho travado em retrato: girar o sensor por sensorOrientation deixa o frame
     // em pé. Na frontal o frame cru não vem espelhado; só o preview é espelho.
@@ -225,7 +281,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final request = planes();
     final copied = _clock.elapsedMicroseconds;
     final swap = rotation % 180 != 0;
-    _hand
+    hand
         .call(request)
         .then((reply) {
           final result = reply as HandResult;
@@ -306,8 +362,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _classify(ClassifierRequest request) {
+    // Resposta da mão que chegou durante a ida para o segundo plano.
+    final classifier = _classifier;
+    if (classifier == null) return;
     _classifierBusy = true;
-    _classifier
+    classifier
         .call(request)
         .then((reply) {
           final result = reply as ClassifierResult;
@@ -360,8 +419,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     camera?.dispose();
-    _hand.dispose();
-    _classifier.dispose();
+    // Matar sem liberar: o close() responderia pedidos de um controller já
+    // descartado, e o processo está saindo.
+    _hand?.dispose();
+    _classifier?.dispose();
     super.dispose();
   }
 }

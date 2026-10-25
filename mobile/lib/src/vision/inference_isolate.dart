@@ -26,6 +26,11 @@ class ResetTracking {
   const ResetTracking();
 }
 
+/// Libera os modelos do isolate; o último pedido antes de [Worker.close].
+class ReleaseModels {
+  const ReleaseModels();
+}
+
 typedef Handler = Object? Function(Object? request);
 
 /// Um isolate que responde a cada pedido com o tratador montado por `setup`.
@@ -95,6 +100,17 @@ class Worker {
     return completer.future;
   }
 
+  /// Libera os modelos e encerra o isolate. Os pedidos já enviados respondem antes
+  /// (a fila do isolate é uma só); matar direto deixaria a memória nativa presa.
+  Future<void> close() async {
+    try {
+      await call(const ReleaseModels());
+    } catch (_) {
+      // Isolate já morto: não sobrou quem libere os modelos.
+    }
+    dispose();
+  }
+
   /// Fecha o aviso de saída antes de matar: o encerramento pedido não é erro, e o
   /// dono já descartado não pode ser notificado.
   void dispose() {
@@ -133,6 +149,10 @@ Handler handWorker(Object init) {
       stage.reset();
       return null;
     }
+    if (request is ReleaseModels) {
+      stage.close();
+      return null;
+    }
     final clock = Stopwatch()..start();
     final frame = (request as YuvPlanes).materialize();
     final planes = clock.elapsedMicroseconds / 1000;
@@ -145,5 +165,11 @@ Handler handWorker(Object init) {
 /// Isolate do SignEdge: só o classificador Int8.
 Handler classifierWorker(Object init) {
   final stage = ClassifierStage(init as Uint8List);
-  return (request) => stage.process(request as ClassifierRequest);
+  return (request) {
+    if (request is ReleaseModels) {
+      stage.close();
+      return null;
+    }
+    return stage.process(request as ClassifierRequest);
+  };
 }
