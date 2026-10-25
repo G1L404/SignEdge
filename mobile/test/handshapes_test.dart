@@ -34,6 +34,14 @@ void main() {
     expect(catalog.readingsAmong([Ranked(25, 0.5), Ranked(21, 0.4)]), ['C']);
   });
 
+  test('CM do card sem leitura não pega a letra da vizinha', () {
+    // CM 54 ativa (sem leitura) com a CM 51 (W / 3) em segundo: visto no aparelho.
+    expect(
+      catalog.readingsAmong([Ranked(53, 0.40), Ranked(50, 0.52)]),
+      isEmpty,
+    );
+  });
+
   test('leitura ainda sem revisão', () {
     expect(catalog.reviewed, isFalse);
   });

@@ -76,7 +76,11 @@ class HandshapeCatalog {
   /// Leituras distintas das CMs com pelo menos [minimum] de probabilidade, na
   /// ordem de [ranked]: "C ou O" quando a rede divide a confiança entre formas
   /// de letras diferentes, em vez de afirmar uma só.
+  ///
+  /// A primeira de [ranked] é a CM do card: sem leitura própria, nada aparece
+  /// (a letra de uma vizinha pareceria ser a dela).
   List<String> readingsAmong(List<Ranked> ranked, {double minimum = 0.15}) {
+    if (ranked.isEmpty || readingOf(ranked.first.cm) == null) return const [];
     final out = <String>[];
     for (final r in ranked) {
       if (r.probability < minimum) continue;
