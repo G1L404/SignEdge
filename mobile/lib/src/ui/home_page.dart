@@ -68,6 +68,17 @@ class _CameraView extends StatelessWidget {
   Widget build(BuildContext context) {
     final camera = app.camera;
     if (camera == null || !camera.value.isInitialized) {
+      // Abertura que falhou (ex.: troca para uma câmera indisponível): sem o
+      // erro, a tela ficaria girando para sempre.
+      final error = app.error;
+      if (camera == null && error != null) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('Não foi possível abrir a câmera:\n$error'),
+          ),
+        );
+      }
       return const Center(child: CircularProgressIndicator());
     }
     // previewSize vem na orientação do sensor (paisagem); em retrato, inverte.

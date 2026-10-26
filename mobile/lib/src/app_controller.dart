@@ -12,13 +12,14 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 
 import 'logic/decision.dart';
 import 'vision/inference_isolate.dart';
 import 'vision/frame.dart';
 import 'vision/pipeline.dart';
 
-class AppController extends ChangeNotifier {
+class AppController extends ChangeNotifier with WidgetsBindingObserver {
   AppController._(this._hand, this._classifier, this._cameras, this.modelBytes);
 
   static Future<AppController> create() async {
@@ -41,6 +42,9 @@ class AppController extends ChangeNotifier {
       models.classifier.lengthInBytes,
     );
     await controller._open(CameraLensDirection.back);
+    // Só depois da primeira abertura: o pedido de permissão da câmera também
+    // tira o app do primeiro plano.
+    WidgetsBinding.instance.addObserver(controller);
     return controller;
   }
 
@@ -63,6 +67,9 @@ class AppController extends ChangeNotifier {
   /// responde em 86,3% das pausas com 80,2% de acerto entre as respondidas (0,30:
   /// 94,7% e 77,5%; 0,70: 70,1% e 86,5%). O slider ajusta ao vivo.
   double threshold = 0.45;
+
+  /// Faixa do slider do limiar.
+  static const double minThreshold = 0.3, maxThreshold = 0.9;
 
   // Último frame processado, em coordenadas do frame em pé.
   int frameWidth = 0, frameHeight = 0;
@@ -111,7 +118,55 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Lente da câmera aberta, para reabrir a mesma ao voltar do segundo plano.
+  CameraLensDirection _lens = CameraLensDirection.back;
+
+  /// Abrir, fechar e trocar a câmera rodam em fila: um toque em "trocar" durante
+  /// a volta do segundo plano não pode abrir duas câmeras.
+  Future<void> _cameraTask = Future.value();
+
+  Future<void> _serial(
+    Future<void> Function() task,
+  ) => _cameraTask = _cameraTask.then((_) => task()).catchError((Object e) {
+    // Sem câmera: a tela mostra o erro, e a próxima volta ao app tenta de novo.
+    error = '$e';
+    debugPrint('SignEdge: $e');
+    notifyListeners();
+  });
+
+  /// Em segundo plano a câmera é liberada (o Android a toma de volta, e o app
+  /// parado com ela aberta é dos primeiros que o LMK mata); na volta, reabre.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        unawaited(_serial(_close));
+      case AppLifecycleState.resumed:
+        unawaited(
+          _serial(() async {
+            if (camera == null) await _open(_lens);
+          }),
+        );
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
+  Future<void> _close() async {
+    final old = camera;
+    if (old == null) return;
+    camera = null;
+    notifyListeners();
+    // Sem stream (a abertura falhou no meio), stopImageStream lançaria e o
+    // dispose não rodaria.
+    if (old.value.isStreamingImages) await old.stopImageStream();
+    await old.dispose();
+  }
+
   Future<void> _open(CameraLensDirection lens) async {
+    _lens = lens;
     final description = _cameras.firstWhere(
       (c) => c.lensDirection == lens,
       orElse: () => _cameras.first,
@@ -140,10 +195,16 @@ class AppController extends ChangeNotifier {
     unawaited(_hand.call(const ResetTracking()));
     _forgetHand();
     await controller.startImageStream(_onImage);
+    // Reaberta com o catálogo ainda aberto (volta do segundo plano): segue pausada.
+    if (_paused) {
+      try {
+        await controller.pausePreview();
+      } catch (_) {}
+    }
     notifyListeners();
   }
 
-  Future<void> switchCamera() async {
+  Future<void> switchCamera() => _serial(() async {
     final old = camera;
     if (old == null || !canSwitch) return;
     // A direção nova sai da câmera atual, antes de zerar `camera` (senão `isFront`
@@ -151,17 +212,17 @@ class AppController extends ChangeNotifier {
     final next = old.description.lensDirection == CameraLensDirection.front
         ? CameraLensDirection.back
         : CameraLensDirection.front;
-    camera = null;
-    notifyListeners();
-    await old.stopImageStream();
-    await old.dispose();
+    // Se a nova não abrir, a volta ao app tenta ela de novo, não a antiga.
+    _lens = next;
+    await _close();
     await _open(next);
-  }
+  });
 
   void setThreshold(double value) {
     // A decisão nova sai no próximo frame (≤ 50 ms): recalcular aqui contaria um
-    // frame a mais na histerese.
-    threshold = value;
+    // frame a mais na histerese. O slider com divisões devolve 0,9000000000000001
+    // no topo, que o próprio Slider recusa no rebuild seguinte.
+    threshold = value.clamp(minThreshold, maxThreshold);
     notifyListeners();
   }
 
@@ -327,6 +388,7 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     camera?.dispose();
     _hand.dispose();
     _classifier.dispose();

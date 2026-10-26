@@ -75,6 +75,12 @@ responde em 86,3% das pausas com 80,2% de acerto entre as respondidas, e a CM
 verdadeira está no top-3 em 92,4% (top-1 75,2%, top-2 88,9%). São números do
 Kinect; o honesto é medir no celular.
 
+Em segundo plano o app libera a câmera e a reabre na volta (~0,9 s); abrir, fechar
+e trocar a câmera rodam em fila, e uma falha de abertura aparece na tela. Os
+modelos ficam carregados: liberá-los também tirava só ~17 MB do Native Heap e a
+volta subia para ~12 s, com os delegates da GPU recompilando (Redmi Note 13 Pro 5G,
+debug). Parado, o app ainda pode ser encerrado pelo LMK do MIUI.
+
 ## Benchmark isolado do classificador
 
 `lib/bench_main.dart` mede o `invoke` com o mesmo `tflite_flutter` e o mesmo
