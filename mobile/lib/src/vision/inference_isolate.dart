@@ -30,7 +30,22 @@ typedef Handler = Object? Function(Object? request);
 
 /// Um isolate que responde a cada pedido com o tratador montado por `setup`.
 class Worker {
-  Worker._(this._isolate, this._requests, Stream<dynamic> replies) {
+  Worker._(
+    this._isolate,
+    this._requests,
+    Stream<dynamic> replies,
+    this._exits,
+  ) {
+    // Isolate que morre (erro fora do tratador, falta de memória) nunca responde:
+    // sem isso, o pedido pendente fica para sempre e o app congela sem erro.
+    _exits.listen((message) {
+      final reason = message is List ? '${message.first}' : 'encerrado';
+      _dead ??= StateError('isolate de inferência parou: $reason');
+      for (final completer in _pending.values) {
+        completer.completeError(_dead!);
+      }
+      _pending.clear();
+    });
     replies.listen((message) {
       final (id, payload) = message as (int, Object?);
       final completer = _pending.remove(id);
@@ -49,25 +64,43 @@ class Worker {
   ) async {
     final replies = ReceivePort();
     final stream = replies.asBroadcastStream();
-    final isolate = await Isolate.spawn(_main, (replies.sendPort, setup, init));
+    final exits = ReceivePort();
+    final isolate = await Isolate.spawn(
+      _main,
+      (replies.sendPort, setup, init),
+      onExit: exits.sendPort,
+      onError: exits.sendPort,
+    );
     final first = await stream.first;
-    if (first is RemoteError) throw first;
-    return Worker._(isolate, first as SendPort, stream);
+    if (first is RemoteError) {
+      exits.close();
+      throw first;
+    }
+    return Worker._(isolate, first as SendPort, stream, exits);
   }
 
   final Isolate _isolate;
   final SendPort _requests;
+  final ReceivePort _exits;
   final Map<int, Completer<Object?>> _pending = {};
   int _next = 0;
+  StateError? _dead;
 
   Future<Object?> call(Object request) {
+    final dead = _dead;
+    if (dead != null) return Future.error(dead);
     final id = _next++;
     final completer = _pending[id] = Completer<Object?>();
     _requests.send((id, request));
     return completer.future;
   }
 
-  void dispose() => _isolate.kill(priority: Isolate.immediate);
+  /// Fecha o aviso de saída antes de matar: o encerramento pedido não é erro, e o
+  /// dono já descartado não pode ser notificado.
+  void dispose() {
+    _exits.close();
+    _isolate.kill(priority: Isolate.immediate);
+  }
 
   static void _main((SendPort, Handler Function(Object), Object) args) {
     final (replies, setup, init) = args;

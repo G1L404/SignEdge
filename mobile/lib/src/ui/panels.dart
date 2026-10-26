@@ -21,6 +21,8 @@ class TelemetryBar extends StatelessWidget {
         children: [
           Text(
             value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -29,6 +31,8 @@ class TelemetryBar extends StatelessWidget {
           ),
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
           ),
         ],
@@ -39,15 +43,18 @@ class TelemetryBar extends StatelessWidget {
       child: Row(
         children: [
           metric('FPS', app.fps.toStringAsFixed(0)),
-          metric(
-            'mão ${app.handBackends} (${app.usedPalm ? 'palma' : 'rastreio'})',
-            '${app.handMs.toStringAsFixed(0)} ms',
+          // O rótulo da mão é o mais longo ("GPU · GPU (rastreio)"): ocupa a sobra
+          // e corta com reticências em telas de ~380 dp, em vez de estourar a linha.
+          Expanded(
+            child: metric(
+              'mão ${app.handBackends} (${app.usedPalm ? 'palma' : 'rastreio'})',
+              '${app.handMs.toStringAsFixed(0)} ms',
+            ),
           ),
           metric(
             'SignEdge ${app.classifierBackend.toUpperCase()}',
             '${app.classifierMs.toStringAsFixed(1)} ms',
           ),
-          const Spacer(),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
@@ -198,8 +205,8 @@ class ResultCard extends StatelessWidget {
                 Expanded(
                   child: Slider(
                     value: app.threshold,
-                    min: 0.3,
-                    max: 0.9,
+                    min: AppController.minThreshold,
+                    max: AppController.maxThreshold,
                     divisions: 12,
                     label: limit,
                     onChanged: app.setThreshold,
