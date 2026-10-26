@@ -80,18 +80,6 @@ split:
   # (--all-actors), com a receita já congelada.
   ood: [C6]
 
-vocabularies:
-  # Códigos da base (CM = código + 1). `other` junta as demais configurações num rótulo
-  # "outra", limitado a other_cap_factor × a mediana de pausas por classe a cada época.
-  demo:
-    # CM 1, 2, 3, 5, 8, 26, 33, 38, 39, 40, 44, 51, 53, 61. Escolhido nos 5 folds (atlas,
-    # separação em landmarks e student_ce, valor didático): a acurácia nesses folds é
-    # otimista e a medida honesta é o C6. Saíram CM11 (troca com CM9 e CM25), CM15 (com a
-    # CM38) e CM25, a joia (com CM1, CM7 e CM26).
-    codes: [0, 1, 2, 4, 7, 25, 32, 37, 38, 39, 43, 50, 52, 60]
-    other: true
-    other_cap_factor: 3
-
 view:
   input_size: 224
   # Lado da vista = caixa da mão (21 pontos × 1,4, com piso) × view_context. O app repete

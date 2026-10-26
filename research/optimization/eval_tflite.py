@@ -1,8 +1,8 @@
 """Validação dos TFLite contra o PyTorch FP32, no conjunto medido do run.
 
 Mesma régua do treino: vista de avaliação, unidade = pausa, também espelhado.
-Além das 61 classes, a medida fechada no vocabulário da demo e a concordância
-frame a frame do top-1 com o FP32 (o quanto a quantização mudou as respostas).
+Além das 61 classes, a concordância frame a frame do top-1 com o FP32 (o quanto a
+quantização mudou as respostas).
 
 `make export` só copia o arquivo para mobile/assets depois deste passo.
 """
@@ -25,8 +25,7 @@ from research.optimization.quantizer import (
     load_student,
     scale_head,
 )
-from research.training.aggregate import closed_accuracy
-from research.training.metrics import pause_logits, summarize
+from research.training.metrics import summarize
 
 
 def tflite_logits(model_path: Path, views: list[tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
@@ -52,15 +51,9 @@ def torch_logits(model, views: list[tuple[np.ndarray, np.ndarray]]) -> np.ndarra
     return np.concatenate(out).astype(np.float32)
 
 
-def report(logits: np.ndarray, split, vocab: dict, demo: list[int], reference=None) -> dict:
+def report(logits: np.ndarray, split, reference=None) -> dict:
     labels, pauses = split.labels.numpy(), split.pause_ids.numpy()
     metrics = summarize(logits, labels, pauses)
-    if vocab["name"] == "full":
-        pooled, _ = pause_logits(logits, labels, pauses)
-        codes = pause_logits(logits, split.codes.numpy(), pauses)[1]
-        metrics["demo_closed_acc"] = round(
-            closed_accuracy({"logits": pooled, "codes": codes, "vocab": vocab}, demo), 4
-        )
     if reference is not None:
         metrics["top1_agree_fp32"] = round(
             float((logits.argmax(1) == reference.argmax(1)).mean()), 4
@@ -84,7 +77,6 @@ def main(argv: list[str] | None = None) -> None:
     models = (
         [_repo_path(m) for m in args.models] if args.models else sorted(out_dir.glob("*.tflite"))
     )
-    demo = [int(c) for c in config["vocabularies"]["demo"]["codes"]]
 
     model, record = load_student(run_dir)
     # A referência FP32 recebe o mesmo 1/T que o quantizador dobrou na cabeça.
@@ -103,24 +95,21 @@ def main(argv: list[str] | None = None) -> None:
         views = list(app_views(split, hand_side, record["config"], flip))
         reference = torch_logits(model, views)
         suffix = "_espelhado" if flip else ""
-        results[f"pytorch_fp32{suffix}"] = report(reference, split, record["vocab"], demo)
+        results[f"pytorch_fp32{suffix}"] = report(reference, split)
         for path in models:
             logits = tflite_logits(path, views)
-            results[f"{path.stem}{suffix}"] = report(
-                logits, split, record["vocab"], demo, reference
-            )
+            results[f"{path.stem}{suffix}"] = report(logits, split, reference)
     results["bytes"] = {p.name: p.stat().st_size for p in models}
     (out_dir / f"eval_{args.split}.json").write_text(json.dumps(results, indent=1), "utf-8")
 
-    print(f"{'modelo':<28}{'MB':>7}{'pausa 61':>10}{'fechada 14':>12}{'top1=fp32':>11}")
+    print(f"{'modelo':<28}{'MB':>7}{'pausa 61':>10}{'quadro':>9}{'top1=fp32':>11}")
     for name, m in results.items():
         if not isinstance(m, dict) or "pause_acc" not in m:
             continue
         size = results["bytes"].get(f"{name.removesuffix('_espelhado')}.tflite")
         mb = f"{size / 2**20:.2f}" if size else "-"
         agree = f"{m['top1_agree_fp32']:.1%}" if "top1_agree_fp32" in m else "-"
-        closed = m.get("demo_closed_acc", 0)
-        print(f"{name:<28}{mb:>7}{m['pause_acc']:>10.1%}{closed:>12.1%}{agree:>11}")
+        print(f"{name:<28}{mb:>7}{m['pause_acc']:>10.1%}{m['frame_acc']:>9.1%}{agree:>11}")
 
 
 if __name__ == "__main__":

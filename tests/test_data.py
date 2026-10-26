@@ -51,28 +51,14 @@ def test_loso_folds_refuse_an_actor_without_a_role() -> None:
         loso_folds(_samples(), ["C1", "C2", "C3", "C4"], ["C6"])
 
 
-def test_pause_sampler_caps_a_label_with_too_many_pauses() -> None:
-    samples = _samples()
-    keys = sorted(samples)
-    labels = [0 if samples[key]["clip"].endswith("_0") else 1 for key in keys]
-    sampler = PauseSampler(keys, samples, seed=0, labels=labels, caps={1: 5})
-    picks = list(sampler)
-    assert len(picks) == len(sampler) == 12 + 5
-    assert sum(labels[i] == 1 for i in picks) == 5
-    sampler.set_epoch(1)
-    assert {i for i in sampler if labels[i] == 1} != {i for i in picks if labels[i] == 1}
-
-
-def test_vocab_maps_the_listed_codes_in_order_and_the_rest_to_other() -> None:
+def test_vocab_is_the_61_classes_and_rejects_subsets() -> None:
     from research.data.vocab import resolve_vocab
 
-    config = {"vocabularies": {"v": {"codes": [5, 0], "other": True, "other_cap_factor": 2}}}
-    vocab = resolve_vocab(config, "v")
-    assert vocab["names"] == ["HC05", "HC00", "outra"]
-    assert vocab["label_of"][5] == 0 and vocab["label_of"][0] == 1 and vocab["label_of"][7] == 2
-    closed = resolve_vocab({"vocabularies": {"v": {"codes": [5]}}}, "v")
-    assert closed["label_of"][5] == 0 and closed["label_of"][0] is None
-    assert resolve_vocab(config, None)["num_classes"] == 61
+    vocab = resolve_vocab({})
+    assert vocab["name"] == "full" and vocab["num_classes"] == 61
+    assert vocab["label_of"][37] == 37 and vocab["names"][0] == "HC00"
+    with pytest.raises(ValueError, match="61 classes"):
+        resolve_vocab({}, "demo")
 
 
 def test_pause_sampler_draws_one_frame_per_pause_and_changes_by_epoch() -> None:

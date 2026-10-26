@@ -304,7 +304,6 @@ def prune_run(
         else _repo_path(teacher),
         name=f"{_pruned_name(run_dir, compression)}_lr{lr:g}",
         device=device,
-        vocab=record["vocab"]["name"],
         n_train_actors=record.get("n_train_actors"),
         config=config,
         model=model,

@@ -89,6 +89,28 @@ class AppController extends ChangeNotifier {
 
   bool get canSwitch => _cameras.length > 1;
 
+  /// Pausado enquanto o catálogo está aberto: a câmera e os dois isolates param e a
+  /// rolagem fica com a GPU e a CPU.
+  bool _paused = false;
+
+  Future<void> pauseProcessing() async {
+    _paused = true;
+    _forgetHand();
+    decision = Decision.neutral;
+    try {
+      await camera?.pausePreview();
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> resumeProcessing() async {
+    _paused = false;
+    try {
+      await camera?.resumePreview();
+    } catch (_) {}
+    notifyListeners();
+  }
+
   Future<void> _open(CameraLensDirection lens) async {
     final description = _cameras.firstWhere(
       (c) => c.lensDirection == lens,
@@ -149,7 +171,9 @@ class AppController extends ChangeNotifier {
     _profile.delivered++;
     final current = camera;
     // Durante a troca de câmera ainda podem chegar frames da anterior.
-    if (_handBusy || current == null || image.planes.length < 3) return;
+    if (_paused || _handBusy || current == null || image.planes.length < 3) {
+      return;
+    }
     _handBusy = true;
     // Aparelho travado em retrato: girar o sensor por sensorOrientation deixa o frame
     // em pé. Na frontal o frame cru não vem espelhado; só o preview é espelho.

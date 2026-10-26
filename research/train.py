@@ -7,8 +7,8 @@ Dois modos, e nenhum escolhe checkpoint pelo conjunto medido (passos fixos, últ
 - todos (`--all-actors`): treina em todos os atores dos folds com a receita já
   congelada e mede o C6 uma única vez, no fim.
 
-A destilação exige um professor do mesmo fold, modo e vocabulário: um professor
-que viu o ator medido vazaria esse ator para o aluno.
+A destilação exige um professor do mesmo fold e modo: um professor que viu o ator
+medido vazaria esse ator para o aluno.
 """
 
 from __future__ import annotations
@@ -64,17 +64,14 @@ def _versions() -> dict:
     return versions
 
 
-def _load_teacher(run_dir: Path, fold: int | None, vocab: str, device, stage: str = "teacher"):
+def _load_teacher(run_dir: Path, fold: int | None, device, stage: str = "teacher"):
     from research.training.loop import build_model
 
     record = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     if record["stage"] != stage:
         raise ValueError(f"{run_dir} não é um {stage} ({record['stage']})")
-    if record["fold"] != fold or record["vocab"]["name"] != vocab:
-        raise ValueError(
-            f"professor do fold {record['fold']} (vocabulário {record['vocab']['name']}) "
-            f"não serve ao fold {fold} (vocabulário {vocab})"
-        )
+    if record["fold"] != fold:
+        raise ValueError(f"professor do fold {record['fold']} não serve ao fold {fold}")
     import torch
 
     teacher = build_model(stage, record["config"], pretrained=False)
@@ -115,20 +112,6 @@ def _fewer_actors(fold: dict, samples: dict, n: int, seed: int) -> dict:
     }
 
 
-def _other_caps(train, vocab: dict) -> dict[int, int] | None:
-    """Pausas por época da classe "outra": `other_cap_factor` × a mediana das classes."""
-    if not vocab["other"]:
-        return None
-    import numpy as np
-
-    other = vocab["num_classes"] - 1
-    pauses: dict[int, set] = {}
-    for label, pause in zip(train.labels.tolist(), train.pause_ids.tolist(), strict=True):
-        pauses.setdefault(label, set()).add(pause)
-    typical = np.median([len(v) for k, v in pauses.items() if k != other])
-    return {other: int(round(vocab["other_cap_factor"] * typical))}
-
-
 def run(
     config_path: Path,
     stage: str,
@@ -138,7 +121,6 @@ def run(
     steps: int | None = None,
     name: str | None = None,
     device: str | None = None,
-    vocab: str | None = None,
     n_train_actors: int | None = None,
     *,
     config: dict | None = None,
@@ -165,7 +147,7 @@ def run(
 
     config_path = Path(config_path)
     config = load_config(config_path) if config is None else config
-    vocab_info = resolve_vocab(config, vocab)
+    vocab_info = resolve_vocab(config)
     config["model"]["num_classes"] = vocab_info["num_classes"]
     seed = int(config["run"]["seed"] if seed is None else seed)
     data_config_path = _repo_path(config["paths"]["data_config"])
@@ -190,7 +172,7 @@ def run(
         if not teacher_run:
             raise ValueError("a destilação precisa de --teacher-run")
         runs = list(teacher_run) if isinstance(teacher_run, (list, tuple)) else [teacher_run]
-        loaded = [_load_teacher(_repo_path(r), fold, vocab_info["name"], device) for r in runs]
+        loaded = [_load_teacher(_repo_path(r), fold, device) for r in runs]
         teacher_record = loaded[0][1]
         teacher = loaded[0][0] if len(loaded) == 1 else ensemble_teacher([t for t, _ in loaded])
         teacher_run = str(runs[0]) if len(runs) == 1 else [str(r) for r in runs]
@@ -199,9 +181,7 @@ def run(
         # Professor da cabeça auxiliar: o modelo só de pontos do mesmo fold.
         if stage != "student_kd":
             raise ValueError("--aux-teacher-run só vale na destilação")
-        aux_teacher, _ = _load_teacher(
-            _repo_path(aux_teacher_run), fold, vocab_info["name"], device, stage="landmarks"
-        )
+        aux_teacher, _ = _load_teacher(_repo_path(aux_teacher_run), fold, device, stage="landmarks")
 
     label_of = vocab_info["label_of"]
     with LMDBStore(lmdb_path, int(data_config["lmdb"]["map_size"]), readonly=True) as store:
@@ -221,7 +201,6 @@ def run(
             roles = {"train_actors": chosen["train_actors"], "val_actor": chosen["val_actor"]}
         train = InMemorySplit(store, chosen["train"], meta, label_of)
     hand_side = int(meta["layout"]["size"]) / float(meta["crop_rule"]["context_scale"])
-    caps = _other_caps(train, vocab_info)
 
     record = {
         "stage": stage,
@@ -230,7 +209,6 @@ def run(
         "vocab": {k: v for k, v in vocab_info.items() if k != "label_of"},
         **roles,
         "n_train_actors": n_train_actors,
-        "other_cap": caps,
         "created_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "command": sys.argv,
         "config": config,
@@ -275,7 +253,6 @@ def run(
         backgrounds=photos,
         steps=steps,
         holdout=holdout,
-        caps=caps,
         on_step=on_step,
         aux_teacher=aux_teacher,
     )
@@ -296,7 +273,6 @@ def main(argv: list[str] | None = None) -> None:
     where.add_argument(
         "--all-actors", action="store_true", help="treina em todos os atores e mede o C6, uma vez"
     )
-    parser.add_argument("--vocab", help="nome em `vocabularies` (padrão: as 61 classes)")
     parser.add_argument("--n-train-actors", type=int, help="treina só com N atores do fold")
     parser.add_argument("--seed", type=int)
     parser.add_argument(
@@ -328,7 +304,6 @@ def main(argv: list[str] | None = None) -> None:
         args.steps,
         args.name,
         args.device,
-        args.vocab,
         args.n_train_actors,
         runs_dir=args.runs_dir,
         aux_teacher_run=args.aux_teacher_run,

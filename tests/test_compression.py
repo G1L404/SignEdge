@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-
 from research.config import load_config
 from research.optimization.pruner import sparsity, zero_pruned
 

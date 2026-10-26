@@ -6,7 +6,7 @@ TRAIN_CONFIG ?= configs/distillation.yaml
 TFLITE ?= research/experiments/model_int8.tflite
 MOBILE_MODEL ?= mobile/assets/model_int8.tflite
 
-.PHONY: calibrate ingest train loso aggregate prune quantize eval export test
+.PHONY: calibrate ingest train loso aggregate prune prune-loso decisao figuras maos quantize eval export test
 
 # Deslocamento profundidade → cor por sessão; a ingestão lê o resultado.
 calibrate:
@@ -33,6 +33,25 @@ aggregate:
 # make prune RUN=research/experiments/runs/<run do aluno> (o resultado vai para paths.pruned_dir)
 prune:
 	$(PYTHON) -m research.optimization.pruner --config $(TRAIN_CONFIG) --run $(RUN) $(PRUNE_ARGS)
+
+# L1 e LAMP a 50% nos 5 folds do student_kd, McNemar e T depois da poda (poda_loso_ft0/resumo.json).
+prune-loso:
+	$(PYTHON) -m research.optimization.prune_loso --config $(TRAIN_CONFIG)
+
+# Cobertura, acerto, top-k e recall por CM do modelo podado (poda_loso_ft0/decisao_61.json).
+decisao:
+	$(PYTHON) -m research.optimization.calibration --decisao research/experiments/aggregate/poda_loso_ft0
+
+# Atlas das 61 CMs (C4) e matriz de confusão do student_kd, para o capítulo.
+figuras:
+	$(PYTHON) -m research.figures atlas --out figuras/atlas.jpg
+	$(PYTHON) -m research.figures confusao --out figuras/confusao.pdf
+
+# Mãos do catálogo do app: os 21 pontos e a postura de cada CM (Dart) e o sprite sheet
+# 3D sintético; o render pede o MediaPipe (z dos pontos) e usa a GPU se houver.
+maos:
+	$(PYTHON) -m research.data.canonical_hands --config $(TRAIN_CONFIG)
+	$(PYTHON) -m research.data.hand_sprites --config $(TRAIN_CONFIG) --out mobile/assets/hands_61.webp
 
 # make quantize RUN=research/experiments/runs/<run do aluno> [QUANT_ARGS="--landmarks float"]
 quantize:

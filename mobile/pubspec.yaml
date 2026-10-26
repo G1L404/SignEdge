@@ -28,3 +28,5 @@ flutter:
     # hand_landmark_lite (oficial, mediapipe-assets): 12 ms na CPU contra 23 do full,
     # sem perda no SignEdge (C1 do fold 0: 79,2% com os dois).
     - assets/hand_landmark_lite.tflite
+    # As 61 mãos do atlas (C4), recortadas e com os dedos tingidos: research/data/hand_sprites.py.
+    - assets/hands_61.webp

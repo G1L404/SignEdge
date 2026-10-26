@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'src/ui/canonical_hand.dart';
 import 'src/ui/home_page.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await HandSprites.load();
   // O pipeline assume o aparelho em retrato (rotação do sensor fixa).
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const SignEdgeApp());

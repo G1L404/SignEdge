@@ -77,10 +77,9 @@ class PauseSampler:
     """Um frame sorteado por pausa a cada época, em ordem embaralhada.
 
     Pausas com 16 frames pesam o mesmo que pausas com 5. Os outros frames da
-    pausa aparecem em outras épocas, como variação natural do mesmo exemplo.
-    Com `labels` (um rótulo por chave) e `caps` ({rótulo: máximo de pausas por
-    época}), um rótulo com pausas demais (a classe "outra" do vocabulário da
-    demo) entra com um sorteio novo de `cap` pausas a cada época.
+    pausa aparecem em outras épocas, como variação natural do mesmo exemplo. Com
+    `labels` (um rótulo por chave), as pausas entram agrupadas por rótulo antes do
+    sorteio, a ordem com que os treinos do LOSO foram feitos.
     """
 
     def __init__(
@@ -89,34 +88,24 @@ class PauseSampler:
         samples: dict[str, dict],
         seed: int = 0,
         labels: list[int] | None = None,
-        caps: dict[int, int] | None = None,
     ) -> None:
         self._groups = group_by_pause(keys, samples)
         self._seed = seed
         self._epoch = 0
-        self._caps = dict(caps or {})
         self._labels = [None if labels is None else labels[g[0]] for g in self._groups]
 
     def set_epoch(self, epoch: int) -> None:
         self._epoch = epoch
 
     def __len__(self) -> int:
-        total = 0
-        for label in set(self._labels):
-            count = self._labels.count(label)
-            total += min(count, self._caps.get(label, count))
-        return total
+        return len(self._groups)
 
     def __iter__(self):
         rng = random.Random(self._seed * 1_000_003 + self._epoch)
         by_label: dict = defaultdict(list)
         for group, label in zip(self._groups, self._labels, strict=True):
             by_label[label].append(group)
-        groups = []
-        for label in sorted(by_label, key=str):
-            members = by_label[label]
-            cap = self._caps.get(label)
-            groups.extend(rng.sample(members, cap) if cap and cap < len(members) else members)
+        groups = [group for label in sorted(by_label, key=str) for group in by_label[label]]
         picks = [rng.choice(group) for group in groups]
         rng.shuffle(picks)
         return iter(picks)

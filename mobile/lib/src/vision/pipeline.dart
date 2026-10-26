@@ -163,8 +163,12 @@ class HandStage {
   late Backend _palmBackend, _landmarksBackend;
   late final int _palmRaw, _palmScore, _lmPoints, _lmPresence;
 
-  String get handBackends =>
-      '${_palmBackend.name.toUpperCase()} · ${_landmarksBackend.name.toUpperCase()}';
+  /// Onde a palma e os pontos rodam; um só nome quando é o mesmo backend.
+  String get handBackends {
+    final palm = _palmBackend.name.toUpperCase();
+    final points = _landmarksBackend.name.toUpperCase();
+    return palm == points ? palm : '$palm · $points';
+  }
 
   final _palmIn = Float32List(palmInput * palmInput * 3);
   final _palmBoxes = Float32List(2016 * 18);

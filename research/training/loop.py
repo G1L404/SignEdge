@@ -115,7 +115,6 @@ class Trainer:
         backgrounds: torch.Tensor | None = None,
         steps: int | None = None,
         holdout: dict[str, InMemorySplit] | None = None,
-        caps: dict[int, int] | None = None,
         on_step=None,
         aux_teacher: nn.Module | None = None,
     ) -> None:
@@ -160,9 +159,7 @@ class Trainer:
             backgrounds,
         )
         self.eval_view = EvalView(hand_side_px, view["view_context"], view["input_size"], device)
-        self.sampler = PauseSampler(
-            train.keys, _samples_of(train), seed, train.labels.tolist(), caps
-        )
+        self.sampler = PauseSampler(train.keys, _samples_of(train), seed, train.labels.tolist())
         self.mix_gen = torch.Generator(device=device).manual_seed(seed + 1)
         torch.manual_seed(seed)
         decay = float(self.run_cfg["ema_decay"])

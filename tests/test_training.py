@@ -125,7 +125,6 @@ def _tiny_configs(tmp: Path) -> Path:
     config["paths"]["runs_dir"] = str(tmp / "runs")
     config["augment"]["background"]["photo_dir"] = str(tmp / "sem_fotos")
     config["run"].update(eval_every=2, eval_batch_size=8)
-    config["vocabularies"] = {"duas": {"codes": [2, 0], "other": True, "other_cap_factor": 1}}
     for stage in config["stages"].values():
         stage.update(batch_size=4, warmup_steps=1)
     path = tmp / "train.yaml"
@@ -150,9 +149,6 @@ def test_every_stage_trains_and_distillation_refuses_a_foreign_teacher(tmp_path:
     assert record["val_actor"] == "C1" and record["train_actors"] == ["C2", "C3", "C4", "C5"]
     with pytest.raises(ValueError, match="não serve"):
         run(config, "student_kd", 1, teacher_run=teacher, steps=1, name="x", device="cpu")
-    with pytest.raises(ValueError, match="não serve"):
-        run(config, "student_kd", 0, teacher_run=teacher, steps=1, name="y", device="cpu",
-            vocab="duas")  # fmt: skip
 
     final = run(config, "landmarks", fold=None, steps=2, name="todos", device="cpu")
     result = json.loads((final / "result.json").read_text())
@@ -161,37 +157,3 @@ def test_every_stage_trains_and_distillation_refuses_a_foreign_teacher(tmp_path:
     assert all(row["eval"] == {} for row in curve)
     record = json.loads((final / "run.json").read_text())
     assert record["train_actors"] == ["C1", "C2", "C3", "C4", "C5"]
-
-
-def test_vocabulary_measures_closed_and_open() -> None:
-    from research.training.aggregate import closed_accuracy, open_report
-
-    full = {"name": "full", "codes": list(range(61)), "other": False}
-    logits = np.zeros((4, 61), np.float32)
-    logits[0, 1], logits[1, 9], logits[1, 2], logits[2, 1], logits[3, 7] = 1, 3, 2, 1, 1
-    pauses = {"logits": logits, "codes": np.array([1, 2, 5, 7]), "vocab": full}
-    assert closed_accuracy(pauses, [1, 2]) == 1.0
-    report = open_report(pauses, [1, 2])
-    assert report["vocab_recall"] == 0.5 and report["false_accept"] == 0.5
-    assert report["other_rejected"] == 0.5 and report["precision"] == 0.5
-    demo = {"name": "d", "codes": [1, 2], "other": True}
-    pauses = {"logits": np.eye(3, dtype=np.float32)[[0, 2, 2]], "codes": np.array([1, 2, 30]),
-              "vocab": demo}  # fmt: skip
-    report = open_report(pauses, [1, 2])
-    assert report["vocab_recall"] == 0.5 and report["false_accept"] == 0.0
-
-
-def test_demo_vocabulary_relabels_and_caps_the_other_class(tmp_path: Path) -> None:
-    from research.train import run
-
-    config = _tiny_configs(tmp_path)
-    out = run(config, "landmarks", fold=2, steps=2, name="demo", device="cpu", vocab="duas")
-    record = json.loads((out / "run.json").read_text())
-    assert record["vocab"]["names"] == ["HC02", "HC00", "outra"]
-    assert record["vocab"]["num_classes"] == 3
-    assert record["other_cap"] == {"2": 8}
-    assert (out / "labels.txt").read_text().split() == ["HC02", "HC00", "outra"]
-    pred = np.load(out / "pred_val.npz")
-    assert pred["logits"].shape[1] == 3
-    expected = {2: 0, 0: 1, 1: 2}
-    assert all(expected[int(c)] == int(lab) for c, lab in zip(pred["codes"], pred["labels"]))

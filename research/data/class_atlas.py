@@ -1,9 +1,9 @@
 """Atlas das 61 configurações: uma imagem real por classe e ator, rotulada CM1..CM61.
 
-Serve para conferir a numeração contra a figura de referência antes de fechar um
-vocabulário: cada célula é a vista de avaliação (a mesma que o modelo recebe) do
-frame central da primeira pausa de um clipe, em alguns atores lado a lado. As
-classes de `--vocab` ganham borda verde.
+Serve para conferir a numeração contra a figura de referência: cada célula é a
+vista de avaliação (a mesma que o modelo recebe) do frame central da primeira pausa
+de um clipe, em alguns atores lado a lado. As CMs de `--cms` ganham borda verde. A
+figura do capítulo sai de `research.figures atlas`.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ import numpy as np
 from research.config import load_config
 from research.data.augment import EvalView
 from research.data.preview import _repo_path, load_batch
-from research.data.vocab import resolve_vocab
 from research.ingestion.lmdb_engine import LMDBStore
 
 
@@ -42,8 +41,6 @@ def atlas(
     actors: list[str],
     tile: int,
     columns: int,
-    vocab: str | None,
-    only_vocab: bool = False,
     cms: list[int] | None = None,
 ) -> Path:
     import cv2
@@ -51,9 +48,7 @@ def atlas(
 
     config = load_config(train_config)
     data_config = load_config(_repo_path(config["paths"]["data_config"]))
-    marked = set(resolve_vocab(config, vocab)["codes"]) if vocab else set()
-    if cms:
-        marked = {cm - 1 for cm in cms}
+    marked = {cm - 1 for cm in cms or []}
     with LMDBStore(_repo_path(data_config["paths"]["lmdb_path"]), 1 << 30, readonly=True) as store:
         meta = store.read_meta()
         size = int(meta["layout"]["size"])
@@ -70,7 +65,7 @@ def atlas(
                 images[(code, actor)] = np.ascontiguousarray(pixels)
     blank = np.zeros((tile, tile, 3), np.uint8)
     cells = []
-    for code in sorted(marked) if only_vocab else range(61):
+    for code in range(61):
         strip = np.hstack([images.get((code, actor), blank) for actor in actors])
         strip = cv2.copyMakeBorder(strip, 22, 3, 3, 3, cv2.BORDER_CONSTANT, value=(0, 0, 0))
         color = (60, 220, 60) if code in marked else (255, 255, 255)
@@ -97,9 +92,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--actors", nargs="+", default=["C1", "C3", "C5"])
     parser.add_argument("--tile", type=int, default=112)
     parser.add_argument("--columns", type=int, default=5)
-    parser.add_argument("--vocab", help="destaca as classes desse vocabulário")
-    parser.add_argument("--only-vocab", action="store_true", help="mostra só as do vocabulário")
-    parser.add_argument("--cms", type=int, nargs="+", help="números CM a destacar (troca --vocab)")
+    parser.add_argument("--cms", type=int, nargs="+", help="números CM a destacar")
     args = parser.parse_args(argv)
     print(
         atlas(
@@ -108,8 +101,6 @@ def main(argv: list[str] | None = None) -> None:
             args.actors,
             args.tile,
             args.columns,
-            args.vocab,
-            args.only_vocab,
             args.cms,
         )
     )

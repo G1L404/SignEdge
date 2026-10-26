@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
+import '../logic/canonical_hands.dart';
 import '../logic/decision.dart';
+import 'canonical_hand.dart';
 
 /// Telemetria Edge AI: FPS, latências e o selo do modelo embarcado.
 class TelemetryBar extends StatelessWidget {
@@ -114,28 +116,58 @@ class ResultCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: accepted ? 40 : 24,
-                    fontWeight: FontWeight.w800,
-                    color: color,
+                if (accepted || decision.top.isNotEmpty) ...[
+                  CanonicalHand(
+                    accepted ? code! : decision.top.first.code,
+                    opacity: accepted ? 1 : 0.65,
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 10,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: accepted ? 40 : 24,
+                              fontWeight: FontWeight.w800,
+                              color: color,
+                            ),
+                          ),
+                          if (accepted && frequentConfusion.contains(code))
+                            Chip(
+                              label: const Text('confusão frequente'),
+                              visualDensity: VisualDensity.compact,
+                              side: BorderSide(color: scheme.tertiary),
+                            ),
+                        ],
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      if (accepted)
+                        Text(
+                          canonicalPostures[code!],
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                if (accepted && frequentConfusion.contains(code))
-                  Chip(
-                    label: const Text('confusão frequente'),
-                    visualDensity: VisualDensity.compact,
-                    side: BorderSide(color: scheme.tertiary),
-                  ),
               ],
             ),
-            if (subtitle != null)
-              Text(
-                subtitle,
-                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-              ),
             if (decision.top.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
@@ -172,6 +204,21 @@ class ResultCard extends StatelessWidget {
                     label: limit,
                     onChanged: app.setThreshold,
                   ),
+                ),
+                TextButton.icon(
+                  onPressed: () => app
+                      .pauseProcessing()
+                      .then(
+                        (_) => context.mounted
+                            ? showCatalog(
+                                context,
+                                active: accepted ? code : null,
+                              )
+                            : null,
+                      )
+                      .whenComplete(app.resumeProcessing),
+                  icon: const Icon(Icons.grid_view, size: 18),
+                  label: const Text('Catálogo (61 CMs)'),
                 ),
               ],
             ),

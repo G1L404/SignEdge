@@ -2,8 +2,9 @@
 
 Leva o código (`research/`, `configs/`), o student_kd de um fold do LOSO e as
 vistas 224 já recortadas (EvalView) do ator que esse modelo nunca viu, mais
-frames de calibração dos atores de treino e as predições fora do fold dos 5
-student_kd (para ajustar T). O C6 não entra: ele é o teste final, medido uma vez.
+frames de calibração dos atores de treino e as predições fora do fold dos 5 folds,
+do aluno denso e do podado com LAMP (cache do `prune_loso`), para ajustar T antes e
+depois da poda. O C6 não entra: ele é o teste final, medido uma vez.
 
 As vistas vão em uint8 (o recorte float arredondado a 1/255): é o que a câmera
 entrega, e o erro fica abaixo de meio nível de cinza.
@@ -21,7 +22,6 @@ from pathlib import Path
 
 import numpy as np
 
-from research.config import load_config
 from research.optimization.quantizer import app_views, load_split
 from research.train import REPO_ROOT, _repo_path
 
@@ -34,11 +34,31 @@ def _views(split, hand_side: float, config: dict, keep: np.ndarray):
     return np.concatenate(rgb)[keep], np.concatenate(points)[keep]
 
 
-def build(config_path: Path, run_dir: Path, out: Path, frames_per_pause: int, calib: int) -> Path:
-    from research.training.aggregate import find_runs
+def _oof(cache: Path, model: str):
+    """Logits e rótulos por pausa dos 5 folds, na ordem dos folds."""
     from research.training.metrics import pause_logits
 
-    settings = load_config(config_path)
+    logits, labels, folds = [], [], []
+    for fold in range(5):
+        z = np.load(cache / f"{model}_f{fold}.npz")
+        pooled, pause_labels = pause_logits(
+            z["logits"].astype(np.float32), z["labels"], z["pause_ids"]
+        )
+        logits.append(pooled)
+        labels.append(pause_labels)
+        folds.append(np.full(len(pause_labels), fold))
+    return np.concatenate(logits), np.concatenate(labels), np.concatenate(folds)
+
+
+def build(
+    config_path: Path,
+    run_dir: Path,
+    out: Path,
+    frames_per_pause: int,
+    calib: int,
+    oof_cache: Path,
+) -> Path:
+
     record = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     if record["fold"] is None:
         raise ValueError("o kit usa um fold do LOSO: o modelo --all-actors já viu todos os atores")
@@ -58,13 +78,10 @@ def build(config_path: Path, run_dir: Path, out: Path, frames_per_pause: int, ca
         cal_split, cal_side, record["config"], np.ones(len(cal_split), bool)
     )
 
-    oof_logits, oof_labels, oof_fold = [], [], []
-    for fold, d in find_runs(_repo_path(settings["paths"]["runs_dir"]), record["stage"]).items():
-        z = np.load(d / "pred_val.npz")
-        logits, labels = pause_logits(z["logits"].astype(np.float32), z["labels"], z["pause_ids"])
-        oof_logits.append(logits)
-        oof_labels.append(labels)
-        oof_fold.append(np.full(len(labels), fold))
+    oof_logits, oof_labels, oof_fold = _oof(oof_cache, "denso")
+    oof_pruned, pruned_labels, _ = _oof(oof_cache, "lamp")
+    if not np.array_equal(oof_labels, pruned_labels):
+        raise ValueError("as predições do denso e do podado não estão nas mesmas pausas")
 
     out.parent.mkdir(parents=True, exist_ok=True)
     data = out.with_suffix(".npz")
@@ -77,10 +94,10 @@ def build(config_path: Path, run_dir: Path, out: Path, frames_per_pause: int, ca
         pause_ids=pauses[keep],
         calib_rgb=cal_rgb,
         calib_landmarks=cal_points,
-        oof_logits=np.concatenate(oof_logits),
-        oof_labels=np.concatenate(oof_labels),
-        oof_fold=np.concatenate(oof_fold),
-        demo_codes=np.array(settings["vocabularies"]["demo"]["codes"]),
+        oof_logits=oof_logits,
+        oof_poda_logits=oof_pruned,
+        oof_labels=oof_labels,
+        oof_fold=oof_fold,
     )
     info = {
         "run": run_dir.name,
@@ -91,7 +108,7 @@ def build(config_path: Path, run_dir: Path, out: Path, frames_per_pause: int, ca
         "pauses": len(seen),
         "frames_per_pause": frames_per_pause,
         "calib_frames": len(cal_rgb),
-        "oof_pauses": int(sum(len(x) for x in oof_labels)),
+        "oof_pauses": len(oof_labels),
     }
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as kit:
         for path in sorted((REPO_ROOT / "research").rglob("*.py")):
@@ -115,9 +132,20 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out", type=Path, default=Path("research/experiments/kit/minicurso.zip"))
     parser.add_argument("--frames-per-pause", type=int, default=2)
     parser.add_argument("--calib", type=int, default=160, help="frames de calibração Int8")
+    parser.add_argument(
+        "--oof-cache",
+        type=Path,
+        default=Path("research/experiments/aggregate/poda_loso_ft0"),
+        help="logits fora do fold do prune_loso (denso e lamp)",
+    )
     args = parser.parse_args(argv)
     build(
-        args.config, _repo_path(args.run), _repo_path(args.out), args.frames_per_pause, args.calib
+        args.config,
+        _repo_path(args.run),
+        _repo_path(args.out),
+        args.frames_per_pause,
+        args.calib,
+        _repo_path(args.oof_cache),
     )
 
 
