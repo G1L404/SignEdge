@@ -6,6 +6,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
@@ -25,6 +26,15 @@ class ModelBytes {
 class ResetTracking {
   const ResetTracking();
 }
+
+/// Pergunta ao isolate do SignEdge qual modelo ele abriu.
+class ClassifierInfo {
+  const ClassifierInfo();
+}
+
+/// O modelo aberto pelo isolate do SignEdge: a origem ("aluno" ou "embutido"), o
+/// tamanho do arquivo e, se o do aluno foi recusado, o motivo.
+typedef ModelInfo = ({String source, int sizeBytes, String? rejected});
 
 typedef Handler = Object? Function(Object? request);
 
@@ -142,8 +152,29 @@ Handler handWorker(Object init) {
   };
 }
 
-/// Isolate do SignEdge: só o classificador Int8.
+/// Isolate do SignEdge: só o classificador Int8. `init` traz o asset embutido e o
+/// caminho de um modelo do aparelho; se esse arquivo existe e é um SignEdge
+/// válido, ele vale no lugar do embutido.
 Handler classifierWorker(Object init) {
-  final stage = ClassifierStage(init as Uint8List);
-  return (request) => stage.process(request as ClassifierRequest);
+  final (bytes, path) = init as (Uint8List, String);
+  final file = File(path);
+  ClassifierStage? stage;
+  String? rejected;
+  if (file.existsSync()) {
+    try {
+      stage = ClassifierStage.file(file);
+    } catch (error) {
+      rejected = '$error';
+    }
+  }
+  stage ??= ClassifierStage(bytes);
+  final ready = stage;
+  final ModelInfo info = (
+    source: ready.source,
+    sizeBytes: ready.sizeBytes,
+    rejected: rejected,
+  );
+  return (request) => request is ClassifierInfo
+      ? info
+      : ready.process(request as ClassifierRequest);
 }

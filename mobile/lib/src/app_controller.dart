@@ -20,7 +20,19 @@ import 'vision/frame.dart';
 import 'vision/pipeline.dart';
 
 class AppController extends ChangeNotifier with WidgetsBindingObserver {
-  AppController._(this._hand, this._classifier, this._cameras, this.modelBytes);
+  AppController._(
+    this._hand,
+    this._classifier,
+    this._cameras,
+    this.modelBytes,
+    this.modelSource,
+  );
+
+  /// Modelo que o aluno envia no minicurso, sem recompilar o app:
+  /// `adb push model_int8.tflite <este caminho>`. A pasta é a do app (não pede
+  /// permissão de armazenamento) e some na desinstalação.
+  static const studentModelPath =
+      '/storage/emulated/0/Android/data/br.ufpr.signedge.signedge_mobile/files/model_int8.tflite';
 
   static Future<AppController> create() async {
     Future<Uint8List> bytes(String asset) async =>
@@ -34,12 +46,20 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       models.palm,
       models.landmarks,
     ));
-    final classifier = await Worker.spawn(classifierWorker, models.classifier);
+    final classifier = await Worker.spawn(classifierWorker, (
+      models.classifier,
+      studentModelPath,
+    ));
+    final info = await classifier.call(const ClassifierInfo()) as ModelInfo;
+    if (info.rejected != null) {
+      debugPrint('SignEdge: modelo do aluno recusado: ${info.rejected}');
+    }
     final controller = AppController._(
       hand,
       classifier,
       await availableCameras(),
-      models.classifier.lengthInBytes,
+      info.sizeBytes,
+      info.source,
     );
     await controller._open(CameraLensDirection.back);
     // Só depois da primeira abertura: o pedido de permissão da câmera também
@@ -48,8 +68,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return controller;
   }
 
-  /// Tamanho do model_int8.tflite embarcado, para o selo da telemetria.
+  /// Tamanho e origem do model_int8.tflite aberto ("embutido" ou "aluno"), para
+  /// o selo da telemetria.
   final int modelBytes;
+  final String modelSource;
   final Worker _hand, _classifier;
   final List<CameraDescription> _cameras;
   CameraController? camera;

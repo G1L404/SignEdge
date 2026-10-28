@@ -8,6 +8,7 @@
 /// vazão é a da etapa mais lenta, não a soma das duas.
 library;
 
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -31,7 +32,28 @@ enum Backend { gpu, xnnpack, cpu }
   Uint8List bytes,
   List<Backend> order, {
   int threads = 2,
-}) {
+}) => _openWith(
+  (options) => Interpreter.fromBuffer(bytes, options: options),
+  order,
+  threads,
+);
+
+/// O mesmo que [openVerified], lendo o modelo de um arquivo do aparelho.
+(Interpreter, Backend, void Function() release) openVerifiedFile(
+  File file,
+  List<Backend> order, {
+  int threads = 2,
+}) => _openWith(
+  (options) => Interpreter.fromFile(file, options: options),
+  order,
+  threads,
+);
+
+(Interpreter, Backend, void Function() release) _openWith(
+  Interpreter Function(InterpreterOptions options) create,
+  List<Backend> order,
+  int threads,
+) {
   Object? last;
   for (final backend in order) {
     InterpreterOptions? options;
@@ -58,7 +80,7 @@ enum Backend { gpu, xnnpack, cpu }
           options.threads = threads;
       }
       if (delegate != null) options.addDelegate(delegate);
-      interpreter = Interpreter.fromBuffer(bytes, options: options);
+      interpreter = create(options);
       interpreter.invoke();
       return (interpreter, backend, release);
     } catch (error) {
@@ -417,21 +439,38 @@ class ClassifierStage {
   /// SignEdge Int8 na CPU com o XNNPACK aplicado explicitamente (15–17 ms). O
   /// LiteRT 1.4 do tflite_flutter, no ARM, falha com o XNNPACK padrão nesse modelo
   /// ("Input tensor N lacks data"), e o delegate explícito roda.
-  ClassifierStage(Uint8List bytes) {
-    final opened5 = openVerified(bytes, const [
-      Backend.xnnpack,
-      Backend.gpu,
-      Backend.cpu,
-    ]);
-    _interpreter = opened5.$1;
-    backend = opened5.$2;
+  ClassifierStage(Uint8List bytes)
+    : this._(openVerified(bytes, _order), 'embutido', bytes.lengthInBytes);
+
+  /// O classificador de um arquivo do aparelho (o modelo que o aluno envia por
+  /// `adb push` no minicurso). Lança se o arquivo não é um SignEdge válido.
+  ClassifierStage.file(File file)
+    : this._(openVerifiedFile(file, _order), 'aluno', file.lengthSync());
+
+  ClassifierStage._(
+    (Interpreter, Backend, void Function()) opened,
+    this.source,
+    this.sizeBytes,
+  ) {
+    _interpreter = opened.$1;
+    backend = opened.$2;
     final inputs = _interpreter.getInputTensors();
     _landmarks = inputs.indexWhere((t) => t.name.contains('landmarks'));
     _rgb = inputs.indexWhere((t) => t.name.contains('rgb'));
-    if (_landmarks < 0 || _rgb < 0) {
-      throw StateError('model_int8.tflite sem as entradas rgb e landmarks');
+    final outputs = _interpreter.getOutputTensor(0).shape;
+    if (_landmarks < 0 || _rgb < 0 || outputs.last != 61) {
+      opened.$3();
+      throw StateError(
+        'não é um SignEdge: pede as entradas rgb e landmarks e 61 saídas',
+      );
     }
   }
+
+  static const _order = [Backend.xnnpack, Backend.gpu, Backend.cpu];
+
+  /// "embutido" (assets/model_int8.tflite) ou "aluno" (arquivo do aparelho).
+  final String source;
+  final int sizeBytes;
 
   late final Interpreter _interpreter;
   late final Backend backend;

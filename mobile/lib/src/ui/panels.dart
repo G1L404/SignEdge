@@ -62,7 +62,8 @@ class TelemetryBar extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              'Int8 offline\n${(app.modelBytes / 1048576).toStringAsFixed(2).replaceAll('.', ',')} MiB',
+              '${app.modelSource == 'aluno' ? 'Int8 do aluno' : 'Int8 offline'}\n'
+              '${(app.modelBytes / 1048576).toStringAsFixed(2).replaceAll('.', ',')} MiB',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 10,

@@ -103,8 +103,22 @@ conforme o núcleo que o sistema escolhe. Reinstale o app normal depois.
 1. No Colab, rode `notebooks/minicurso_hands_on.ipynb` com o `minicurso.zip`:
    poda, temperatura depois da poda, decisão nas 61 classes, Int8 e o download
    do `lamp50_int8_lmfloat.tflite`.
-2. Copie o arquivo para `mobile/assets/model_int8.tflite`, compile e instale
-   (seção acima).
+2. Leve o modelo para o app, de um destes jeitos:
+   - **Sem o Flutter** (laboratório só com o `adb`): instale o `app-release.apk`
+     do minicurso e envie o arquivo para a pasta do app. Na abertura, o app usa
+     esse modelo no lugar do embutido, se ele tiver as entradas `rgb` e
+     `landmarks` e 61 saídas; o selo da telemetria passa a "Int8 do aluno". Um
+     arquivo inválido é ignorado (o motivo sai no `adb logcat`), e o app segue
+     com o embutido.
+
+     ```bash
+     adb install -r -d app-release.apk
+     adb push lamp50_int8_lmfloat.tflite /storage/emulated/0/Android/data/br.ufpr.signedge.signedge_mobile/files/model_int8.tflite
+     adb shell am force-stop br.ufpr.signedge.signedge_mobile   # e abra o app de novo
+     # voltar ao embutido: adb shell rm …/files/model_int8.tflite
+     ```
+   - **Com o Flutter:** copie o arquivo para `mobile/assets/model_int8.tflite`,
+     compile e instale (seção acima).
 3. Abra o catálogo, escolha uma CM, faça a forma diante da câmera e compare o
    card com a última célula do notebook: o top-3 deve trazer a mesma CM.
 4. Ponha o celular em modo avião: o app continua funcionando, porque tudo roda
