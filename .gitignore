@@ -34,3 +34,23 @@ mobile/.packages
 *.tex
 *.bib
 *.bak*
+
+# Configuração local do Claude Code (servidor MCP do Colab).
+.mcp.json
+
+# Minicurso: só o notebook do aluno vai para o repositório. O deck, as ferramentas
+# que geram o .pptx e o material da equipe (guia, geradores do notebook e do kit)
+# ficam fora.
+/index*.html
+/SignEdge*Minicurso*.html
+/SignEdge_Minicurso.pptx
+/slides_minicurso.md
+/slides_minicurso.pdf
+/export_slides/
+/notebooks/export_slides/
+/fonts/
+/videos/
+/ferramentas/
+/minicurso/
+/notebooks/minicurso_aluno_executado.ipynb
+.~lock.*#
