@@ -1,6 +1,6 @@
 # SignEdge
 
-Reconhecimento das **61 configurações de mão (CM) da LIBRAS** em tempo real e 100% offline num celular Android. Um professor RGB-D pesado (ConvNeXt-Tiny) é destilado num aluno móvel (MobileNetV4-Conv-Small + ramo dos 21 pontos do MediaPipe), que é podado, recalibrado, quantizado em Int8 e embarcado num app Flutter. É o artefato do minicurso *Quantização, Pruning e Implantação de CNNs* (ERCEMAPI).
+Reconhecimento das **61 configurações de mão (CM) da LIBRAS** em tempo real e 100% offline num celular Android. Um professor RGB-D pesado (ConvNeXt-Tiny) é destilado num aluno móvel (MobileNetV4-Conv-Small + ramo dos 21 pontos do MediaPipe), que é podado, recalibrado, quantizado em Int8 e embarcado num app Flutter. É o artefato do minicurso *Destilação, Poda, Quantização e Implantação de CNNs para Reconhecimento de Configurações de Mão da LIBRAS em Dispositivos Móveis* (ERCEMAPI 2026).
 
 Uma CM é a forma da mão, **não um sinal**: o app mostra "CM 38", não o significado de uma palavra.
 
@@ -11,6 +11,11 @@ LMDB → research/train.py (LOSO 4+1)  → teacher RGB-D → student_kd   config
 student_kd → research/optimization   → poda LAMP → T depois da poda → Int8 PTQ → model_int8.tflite
 model_int8.tflite → mobile/ (Flutter) → MediaPipe (palma + 21 pontos) → vista 224 → 61 CMs + top-3
 ```
+
+## Minicurso (ERCEMAPI 2026)
+
+- **Prática:** [notebooks/minicurso_aluno.ipynb](notebooks/minicurso_aluno.ipynb), na ordem do pipeline: destilação, poda L1 contra LAMP, recalibração por temperatura, Int8 e o arquivo para o celular. [Abrir no Colab](https://colab.research.google.com/github/G1L404/SignEdge/blob/main/notebooks/minicurso_aluno.ipynb), em CPU. A primeira célula baixa o kit sozinha.
+- **Release [`minicurso-ercemapi-2026`](https://github.com/G1L404/SignEdge/releases/tag/minicurso-ercemapi-2026):** o kit da prática (`minicurso.zip`: código, o aluno com e sem professor e fotos do sinalizante C1) e o app (`app-release.apk`). Para instalar o app, abra o link do APK no navegador do celular e permita a instalação de apps de fontes desconhecidas.
 
 ## Protocolo
 
@@ -30,7 +35,7 @@ model_int8.tflite → mobile/ (Flutter) → MediaPipe (palma + 21 pontos) → vi
 | professor RGB-D | 75,3 ± 3,4% | 74,1% | 0,742 |
 | **aluno destilado (student_kd)** | **75,8 ± 4,8%** | 74,6% | 0,742 |
 
-KD contra CE: +3,1 pts, ganha nos 5 folds. A curva por número de sinalizantes de treino (54 → 64 → 69 → 69%) mostra o gargalo: diversidade de pessoas, não augmentation nem capacidade.
+Receita com professor contra só CE: +3,1 pts, ganha nos 5 folds. A receita do `student_kd` também tem mixup e o dobro de passos (6.000 contra 3.000), e não há ablação que isole o professor: o ganho é da receita completa. A curva por número de sinalizantes de treino (54 → 64 → 69 → 69%) mostra o gargalo: diversidade de pessoas, não augmentation nem capacidade.
 
 ### Compressão (o pipeline do app)
 
@@ -103,7 +108,11 @@ make test
 ## Notebooks
 
 - [notebooks/01_data_exploration.ipynb](notebooks/01_data_exploration.ipynb): o LMDB, a profundidade alinhada por sessão, a vista de avaliação contra a augmentation de treino e a sonda de atalho de fundo. Precisa da base local.
-- [notebooks/minicurso_hands_on.ipynb](notebooks/minicurso_hands_on.ipynb): o laboratório do minicurso, na ordem do app: poda L1 contra LAMP, temperatura depois da poda, decisão nas 61 classes (cobertura, acerto e top-3), Int8 com o ramo dos pontos em float32 e o `lamp50_int8_lmfloat.tflite` para o celular. Roda no Colab em CPU com o kit `minicurso.zip`, gerado por `python -m research.optimization.kit --config configs/distillation.yaml --run <student_kd de um fold>` depois do `make prune-loso`. O kit contém recortes da LIBRAS-HC-RGBDS: confira a licença da base antes de distribuir.
+- [notebooks/minicurso_aluno.ipynb](notebooks/minicurso_aluno.ipynb): a prática do minicurso (ver [Minicurso](#minicurso-ercemapi-2026)).
+
+## Dados
+
+A base LIBRAS-HC-RGBDS (UFPR) não está no repositório. Ela é livre para uso acadêmico e não permite uso comercial; o mesmo vale para os recortes que vão no kit do minicurso.
 
 ## Limitações
 
@@ -111,3 +120,11 @@ make test
 - Kinect de laboratório → celular: fundo, iluminação, JPEG e o MediaPipe no aparelho mudam o domínio. O número honesto do app é o medido no celular, que ainda não tem um conjunto gravado.
 - Com o limiar 0,45, cerca de 1 em cada 5 respostas exibidas está errada nas pausas fora do fold; o top-3 contém a certa em 92,4% delas.
 - As posturas do catálogo do app foram revisadas à mão no atlas (61 descrições distintas), sem revisão linguística. As mãos do catálogo são um render 3D sintético dos 21 pontos, com o z do MediaPipe: uma ilustração da forma, não uma medida.
+
+## Autores
+
+Gilclécio S. Morais, José C. J. da Silva, Ednêi R. Coelho, José L. B. Marçal, Mateus A. Santos e Maycon F. Rodrigues.
+
+Orientação: Profa. Maila L. Claro e Prof. Julian R. Valerio.
+
+Instituto Federal do Piauí (IFPI).
