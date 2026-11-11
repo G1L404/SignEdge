@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../app_controller.dart';
 import 'hand_overlay.dart';
 import 'panels.dart';
+import 'splash_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -14,6 +15,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late final Future<AppController> _app = AppController.create();
+  bool _splashDone = false;
 
   @override
   void dispose() {
@@ -23,7 +25,27 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      // O layout padrão centraliza sem esticar: a abertura encolheria até a
+      // largura do conteúdo, com faixas pretas nas laterais.
+      layoutBuilder: (current, previous) =>
+          Stack(fit: StackFit.expand, children: [...previous, ?current]),
+      child: _splashDone
+          ? _buildApp(context)
+          : SplashPage(
+              key: const ValueKey('abertura'),
+              ready: _app,
+              onDone: () {
+                if (mounted) setState(() => _splashDone = true);
+              },
+            ),
+    );
+  }
+
+  Widget _buildApp(BuildContext context) {
     return Scaffold(
+      key: const ValueKey('app'),
       body: SafeArea(
         child: FutureBuilder<AppController>(
           future: _app,

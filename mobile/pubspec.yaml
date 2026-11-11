@@ -30,3 +30,10 @@ flutter:
     - assets/hand_landmark_lite.tflite
     # As 61 mãos do atlas (C4), recortadas e com os dedos tingidos: research/data/hand_sprites.py.
     - assets/hands_61.webp
+  # Atkinson Hyperlegible (SIL OFL 1.1), usada na abertura.
+  fonts:
+    - family: Atkinson
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegible-Regular.ttf
+        - asset: assets/fonts/AtkinsonHyperlegible-Bold.ttf
+          weight: 700
